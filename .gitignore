@@ -57,17 +57,25 @@ htmlcov/
 .tox/
 .nox/
 
-# ML/AI specific
-models/
+# ML/AI specific - Binary model files
 *.h5
 *.pkl
 *.pth
 *.ckpt
 *.pb
 *.onnx
-data/
-datasets/
-checkpoints/
+*.safetensors
+*.bin
+
+# Large data files
+*.csv
+*.parquet
+*.hdf5
+*.feather
+
+# Training checkpoints
+training_checkpoints/
+*.checkpoint
 
 # Documentation
 docs/_build/
