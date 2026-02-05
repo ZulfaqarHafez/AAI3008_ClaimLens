@@ -40,12 +40,22 @@ Thumbs.db
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
-# Environment variables
+# Environment variables - CRITICAL: Never commit secrets!
 .env
 .env.local
 .env.*.local
+.env.development
+.env.production
+.env.staging
+*.env
+secrets.yaml
+secrets.json
+credentials.json
+*.pem
+*.key
+.secrets/
 
-# Logs
+# Logs - may contain sensitive data
 *.log
 logs/
 log/
