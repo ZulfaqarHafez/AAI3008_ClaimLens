@@ -35,16 +35,20 @@ class VerifierAgent:
             verifier_type: Type of verifier to use if no instance provided
             llm_service: LLM service for OpenAI verifier
         """
-        self.llm_service = llm_service or LLMService()
-        
         if verifier:
+            self.llm_service = llm_service
             self.verifier = verifier
         else:
             verifier_type = verifier_type or settings.VERIFIER_TYPE
             
             if verifier_type == "openai":
+                self.llm_service = llm_service or LLMService()
                 self.verifier = get_verifier("openai", llm_service=self.llm_service)
+            elif verifier_type == "claimlens":
+                self.llm_service = llm_service
+                self.verifier = get_verifier("claimlens")
             else:
+                self.llm_service = llm_service
                 self.verifier = get_verifier(verifier_type)
         
         logger.info(f"Initialized VerifierAgent with {type(self.verifier).__name__}")

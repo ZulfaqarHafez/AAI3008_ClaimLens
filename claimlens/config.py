@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     SEARCH_RESULTS_PER_QUERY: int = 5
     
     # Verifier Selection
-    VERIFIER_TYPE: Literal["huggingface", "openai"] = "openai"
+    VERIFIER_TYPE: Literal["huggingface", "openai", "claimlens"] = "claimlens"
     HF_NLI_MODEL: str = "facebook/bart-large-mnli"
     
     # Search Provider

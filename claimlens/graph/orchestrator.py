@@ -2,11 +2,10 @@
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Literal, Annotated
+from typing import Any, Dict, List, Optional, Literal, Annotated, TypedDict
 from datetime import datetime
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
 
 from ..models.schemas import (
     Claim, 
@@ -27,12 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 # Type definitions for state
-class GraphState(dict):
-    """State schema for the LangGraph verification pipeline.
-    
-    This TypedDict-like class defines all state variables that flow
-    through the graph nodes.
-    """
+class GraphState(TypedDict, total=False):
+    """State schema for the LangGraph verification pipeline."""
     original_text: str
     claims: List[Claim]
     current_claim_index: int
@@ -43,29 +38,24 @@ class GraphState(dict):
     final_report: Optional[FinalReport]
     error: Optional[str]
     start_time: float
+    _current_result: Optional[VerificationResult]
 
 
-def create_initial_state(text: str) -> GraphState:
-    """Create the initial state for a verification run.
-    
-    Args:
-        text: The input text to verify
-        
-    Returns:
-        Initial GraphState dictionary
-    """
-    return GraphState(
-        original_text=text,
-        claims=[],
-        current_claim_index=0,
-        search_queries={},
-        evidence_buffer={},
-        verification_results=[],
-        iteration_counts={},
-        final_report=None,
-        error=None,
-        start_time=time.time()
-    )
+def create_initial_state(text: str) -> dict:
+    """Create the initial state for a verification run."""
+    return {
+        "original_text": text,
+        "claims": [],
+        "current_claim_index": 0,
+        "search_queries": {},
+        "evidence_buffer": {},
+        "verification_results": [],
+        "iteration_counts": {},
+        "final_report": None,
+        "error": None,
+        "start_time": time.time(),
+        "_current_result": None,
+    }
 
 
 class ClaimLensGraph:
@@ -121,6 +111,7 @@ class ClaimLensGraph:
         graph.add_node("generate_queries", self._generate_queries_node)
         graph.add_node("search_evidence", self._search_evidence_node)
         graph.add_node("verify_claim", self._verify_claim_node)
+        graph.add_node("finalize_claim", self._finalize_claim_node)
         graph.add_node("aggregate_results", self._aggregate_results_node)
         graph.add_node("generate_report", self._generate_report_node)
         
@@ -147,12 +138,21 @@ class ClaimLensGraph:
         # search_evidence -> verify_claim
         graph.add_edge("search_evidence", "verify_claim")
         
-        # verify_claim -> decision: continue searching, next claim, or aggregate
+        # verify_claim -> continue searching OR finalize this claim
         graph.add_conditional_edges(
             "verify_claim",
             self._route_after_verification,
             {
                 "generate_queries": "generate_queries",  # Continue searching
+                "finalize_claim": "finalize_claim",       # Done with this claim
+            }
+        )
+        
+        # finalize_claim -> next claim or aggregate
+        graph.add_conditional_edges(
+            "finalize_claim",
+            self._route_after_finalize,
+            {
                 "prepare_claim": "prepare_claim",         # Next claim
                 "aggregate_results": "aggregate_results"  # All claims done
             }
@@ -192,7 +192,6 @@ class ClaimLensGraph:
             logger.info(f"Extracted {len(claims)} valid claims")
             
             return {
-                **state,
                 "claims": claims,
                 "iteration_counts": iteration_counts
             }
@@ -200,7 +199,6 @@ class ClaimLensGraph:
         except Exception as e:
             logger.error(f"Decomposition failed: {e}")
             return {
-                **state,
                 "error": f"Decomposition failed: {str(e)}"
             }
     
@@ -225,7 +223,7 @@ class ClaimLensGraph:
                 f"{current_claim.text[:50]}..."
             )
         
-        return state
+        return {}
     
     def _generate_queries_node(self, state: GraphState) -> GraphState:
         """Generate search queries for the current claim.
@@ -270,14 +268,13 @@ class ClaimLensGraph:
             logger.debug(f"Generated {len(queries)} queries for claim")
             
             return {
-                **state,
                 "search_queries": search_queries,
                 "iteration_counts": iteration_counts
             }
             
         except Exception as e:
             logger.error(f"Query generation failed: {e}")
-            return state
+            return {}
     
     def _search_evidence_node(self, state: GraphState) -> GraphState:
         """Search for evidence using generated queries.
@@ -327,13 +324,12 @@ class ClaimLensGraph:
             logger.info(f"Collected {len(all_evidence)} evidence pieces")
             
             return {
-                **state,
                 "evidence_buffer": evidence_buffer
             }
             
         except Exception as e:
             logger.error(f"Evidence search failed: {e}")
-            return state
+            return {}
     
     def _verify_claim_node(self, state: GraphState) -> GraphState:
         """Verify the current claim against collected evidence.
@@ -362,10 +358,8 @@ class ClaimLensGraph:
                 iteration
             )
             
-            # Store result (we'll finalize in routing or aggregation)
-            # Using a temporary key to check in routing
+            # Store result temporarily; finalize_claim will persist it
             return {
-                **state,
                 "_current_result": result
             }
             
@@ -382,7 +376,6 @@ class ClaimLensGraph:
             )
             
             return {
-                **state,
                 "_current_result": result
             }
     
@@ -407,7 +400,7 @@ class ClaimLensGraph:
             f"{sum(1 for r in results if r.verdict == Verdict.NOT_ENOUGH_INFO)} inconclusive"
         )
         
-        return state
+        return {}
     
     def _generate_report_node(self, state: GraphState) -> GraphState:
         """Generate the final verification report.
@@ -438,7 +431,6 @@ class ClaimLensGraph:
             logger.info(f"Report generated. Trust score: {report.overall_trust_score:.2f}")
             
             return {
-                **state,
                 "final_report": report
             }
             
@@ -456,7 +448,6 @@ class ClaimLensGraph:
             )
             
             return {
-                **state,
                 "final_report": report
             }
     
@@ -485,11 +476,7 @@ class ClaimLensGraph:
     def _route_after_verification(self, state: GraphState) -> str:
         """Route after claim verification - decide next action.
         
-        Args:
-            state: Current graph state
-            
-        Returns:
-            Next node name
+        Pure routing function - returns only a string, no state mutation.
         """
         claims = state["claims"]
         current_index = state["current_claim_index"]
@@ -497,8 +484,8 @@ class ClaimLensGraph:
         current_result = state.get("_current_result")
         
         if current_result is None:
-            # Error case - move to next claim
-            return self._finalize_and_route_next(state)
+            # Error case - finalize and move on
+            return "finalize_claim"
         
         # Check if we should continue searching for this claim
         iteration = state["iteration_counts"].get(current_claim.id, 1)
@@ -512,36 +499,43 @@ class ClaimLensGraph:
             logger.debug(f"Continuing search for claim (iteration {iteration + 1})")
             return "generate_queries"
         
-        # Finalize this claim and decide next action
-        return self._finalize_and_route_next(state)
+        # Done with this claim - finalize it
+        return "finalize_claim"
     
-    def _finalize_and_route_next(self, state: GraphState) -> str:
-        """Finalize current claim result and route to next action.
+    def _finalize_claim_node(self, state: GraphState) -> GraphState:
+        """Finalize current claim result and advance the index.
         
-        Args:
-            state: Current graph state
-            
-        Returns:
-            Next node name
+        This is a proper node function so state mutations are persisted.
         """
         claims = state["claims"]
         current_index = state["current_claim_index"]
         current_result = state.get("_current_result")
         
-        # Add result to verification_results
+        # Build new verification_results list
+        results = list(state["verification_results"])
         if current_result:
             current_result.claim.status = ClaimStatus.COMPLETED
-            state["verification_results"].append(current_result)
+            results.append(current_result)
         
-        # Clean up temporary state
-        if "_current_result" in state:
-            del state["_current_result"]
+        next_index = current_index + 1
         
-        # Move to next claim
-        state["current_claim_index"] = current_index + 1
+        logger.info(f"Finalized claim {current_index + 1}/{len(claims)}, moving to index {next_index}")
         
-        # Check if more claims to process
-        if state["current_claim_index"] < len(claims):
+        return {
+            "verification_results": results,
+            "current_claim_index": next_index,
+            "_current_result": None,
+        }
+    
+    def _route_after_finalize(self, state: GraphState) -> str:
+        """Route after finalizing a claim - next claim or aggregate.
+        
+        Pure routing function - returns only a string, no state mutation.
+        """
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+        
+        if current_index < len(claims):
             return "prepare_claim"
         
         return "aggregate_results"

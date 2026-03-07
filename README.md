@@ -1,6 +1,6 @@
 # ClaimLens 🔍
 
-An agentic fact-checking pipeline using LangGraph that decomposes user-provided paragraphs into atomic claims and verifies each claim against web evidence.
+An agentic fact-checking pipeline using LangGraph that decomposes user-provided paragraphs into atomic claims and verifies each claim against web evidence using a fine-tuned DeBERTa-v3 NLI model.
 
 > **Project for AAI3008 Large Language Model module**
 
@@ -24,7 +24,7 @@ An agentic fact-checking pipeline using LangGraph that decomposes user-provided 
 │                                                        ▼           │
 │  ┌──────────┐    ┌──────────┐    ┌──────────────────────────┐     │
 │  │  Final   │◀───│Aggregate │◀───│     Verifier Agent       │     │
-│  │  Report  │    │ Results  │    │ (HF NLI / OpenAI / Custom)│     │
+│  │  Report  │    │ Results  │    │  (ClaimLens DeBERTa NLI) │     │
 │  └──────────┘    └──────────┘    └──────────────────────────┘     │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -35,8 +35,9 @@ An agentic fact-checking pipeline using LangGraph that decomposes user-provided 
 ### Prerequisites
 
 - Python 3.11+
+- Node.js 18+ (for the frontend)
 - OpenAI API key
-- Tavily API key (or SerpAPI key)
+- Tavily API key
 
 ### Installation
 
@@ -45,16 +46,21 @@ An agentic fact-checking pipeline using LangGraph that decomposes user-provided 
 cd AAI3008_ClaimLens
 
 # Create virtual environment
-python -m venv venv
+python -m venv .venv
 
 # Activate virtual environment
 # Windows:
-venv\Scripts\activate
+.venv\Scripts\activate
 # Linux/Mac:
-source venv/bin/activate
+source .venv/bin/activate
 
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Install frontend dependencies
+cd claimlens-ui
+npm install
+cd ..
 ```
 
 ### Configuration
@@ -66,43 +72,90 @@ cp .env.example .env
 # Edit .env and add your API keys
 # OPENAI_API_KEY=your_key_here
 # TAVILY_API_KEY=your_key_here
+# VERIFIER_TYPE=claimlens
 ```
 
-### Running the API
+### Running
 
 ```bash
-# Start the FastAPI server
+# Terminal 1 — Start the FastAPI backend
 uvicorn claimlens.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2 — Start the Next.js frontend
+cd claimlens-ui
+npm run dev
 ```
 
-Visit http://localhost:8000/docs for the interactive API documentation.
+- Backend API docs: http://localhost:8000/docs
+- Frontend UI: http://localhost:3000
 
 ## 📁 Project Structure
 
 ```
-claimlens/
-├── agents/
+AAI3008_ClaimLens/
+├── claimlens/                        # Python backend
 │   ├── __init__.py
-│   ├── decomposition.py     # Breaks text into atomic claims
-│   ├── search_architect.py  # Generates search queries
-│   ├── scraper.py           # Retrieves and filters evidence
-│   └── verifier.py          # Verifies claims against evidence
-├── models/
+│   ├── config.py                     # Settings (env vars, defaults)
+│   ├── agents/
+│   │   ├── __init__.py
+│   │   ├── decomposition.py          # Breaks text into atomic claims (GPT-4o mini)
+│   │   ├── search_architect.py       # Generates search queries per claim
+│   │   ├── scraper.py                # Retrieves and filters web evidence (Tavily)
+│   │   └── verifier.py               # Verifies claims against evidence
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── schemas.py                # Pydantic data models (Claim, Evidence, etc.)
+│   │   └── nli_placeholder.py        # NLI verifier implementations (ClaimLens DeBERTa, HF, OpenAI)
+│   ├── graph/
+│   │   ├── __init__.py
+│   │   └── orchestrator.py           # LangGraph state machine orchestrator
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── llm_service.py            # OpenAI API wrapper
+│   │   └── search_service.py         # Web search API wrapper (Tavily/SerpAPI)
+│   └── api/
+│       ├── __init__.py
+│       └── main.py                   # FastAPI endpoints (sync, async, SSE streaming)
+│
+├── claimlens-ui/                     # Next.js frontend (TypeScript + Tailwind)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── layout.tsx            # Root layout with Navbar + Footer
+│   │   │   ├── page.tsx              # Landing page (Hero, HowItWorks, Features, CTA)
+│   │   │   ├── verify/
+│   │   │   │   └── page.tsx          # Verification page
+│   │   │   └── globals.css           # Tailwind v4 theme
+│   │   ├── components/
+│   │   │   ├── Navbar.tsx            # Navigation bar
+│   │   │   ├── Hero.tsx              # Hero section with gradient text
+│   │   │   ├── HowItWorks.tsx        # 3-step explanation cards
+│   │   │   ├── Features.tsx          # Feature grid
+│   │   │   ├── CTA.tsx               # Call-to-action banner
+│   │   │   ├── Footer.tsx            # Page footer
+│   │   │   └── verify/
+│   │   │       ├── VerifyPage.tsx     # Main verify page (input → loading → results)
+│   │   │       ├── ProgressTracker.tsx # Real-time claim verification progress
+│   │   │       └── ResultsView.tsx    # Trust score banner + expandable result cards
+│   │   ├── lib/
+│   │   │   └── api.ts               # API client with SSE streaming support
+│   │   └── types/
+│   │       └── api.ts               # TypeScript types matching backend schemas
+│   ├── next.config.ts                # API proxy (rewrites /api/* → backend:8000)
+│   ├── package.json
+│   └── tsconfig.json
+│
+├── examples/
+│   ├── run_verification.py           # Standalone demo script
+│   └── custom_verifier.py            # Custom verifier implementation example
+│
+├── tests/
 │   ├── __init__.py
-│   ├── schemas.py           # Pydantic data models
-│   └── nli_placeholder.py   # NLI verifier implementations
-├── graph/
-│   ├── __init__.py
-│   └── orchestrator.py      # LangGraph state machine
-├── services/
-│   ├── __init__.py
-│   ├── llm_service.py       # OpenAI API wrapper
-│   └── search_service.py    # Web search API wrapper
-├── api/
-│   ├── __init__.py
-│   └── main.py              # FastAPI endpoints
-├── __init__.py
-└── config.py                # Configuration settings
+│   └── test_pipeline.py              # Unit tests for the pipeline
+│
+├── .env.example                      # Environment variable template
+├── .gitignore
+├── requirements.txt                  # Python dependencies
+└── README.md
 ```
 
 ## 🔌 API Endpoints
@@ -187,27 +240,6 @@ for result in report['verification_results']:
     print(f"Confidence: {result['confidence']}")
 ```
 
-### Streaming Client (JavaScript)
-
-```javascript
-const eventSource = new EventSource('/verify/stream', {
-  method: 'POST',
-  body: JSON.stringify({ text: 'Your text here...' })
-});
-
-eventSource.addEventListener('claims_extracted', (e) => {
-  console.log('Claims:', JSON.parse(e.data));
-});
-
-eventSource.addEventListener('claim_verified', (e) => {
-  console.log('Verified:', JSON.parse(e.data));
-});
-
-eventSource.addEventListener('complete', (e) => {
-  console.log('Complete:', JSON.parse(e.data));
-});
-```
-
 ## 🔧 Configuration Options
 
 | Variable | Default | Description |
@@ -218,65 +250,55 @@ eventSource.addEventListener('complete', (e) => {
 | `CONFIDENCE_THRESHOLD` | 0.7 | Threshold to stop searching |
 | `MAX_EVIDENCE_PER_CLAIM` | 5 | Max evidence pieces per claim |
 | `SEARCH_RESULTS_PER_QUERY` | 5 | Results per search query |
-| `VERIFIER_TYPE` | openai | Verifier backend (openai/huggingface) |
-| `SEARCH_PROVIDER` | tavily | Search API (tavily/serpapi) |
+| `VERIFIER_TYPE` | claimlens | Verifier backend (`claimlens` / `huggingface` / `openai`) |
+| `SEARCH_PROVIDER` | tavily | Search API (`tavily` / `serpapi`) |
 
-## 🔄 Swapping the Verifier
+## 🤖 ClaimLens DeBERTa NLI Model
 
-The verifier component is designed for easy swapping. To use your custom DeBERTa-v3 model:
+The default verifier uses a fine-tuned DeBERTa-v3 model (`Zulfhagez/claimlens-deberta-v3-nli`) for 3-label natural language inference:
 
-```python
-from claimlens.models.nli_placeholder import BaseVerifier
-from claimlens.agents.verifier import VerifierAgent
+| Label ID | Verdict |
+|----------|---------|
+| 0 | SUPPORTED |
+| 1 | REFUTED |
+| 2 | NOT_ENOUGH_INFO |
 
-class ClaimLensVerifier(BaseVerifier):
-    def __init__(self, model_path: str):
-        # Load your custom model
-        self.model = load_your_model(model_path)
-    
-    def verify(self, claim, evidence):
-        # Implement your verification logic
-        pass
-
-# Use custom verifier
-custom_verifier = ClaimLensVerifier("/path/to/model")
-verifier_agent = VerifierAgent(verifier=custom_verifier)
-```
+The model is lazy-loaded on first use and runs weighted voting across all evidence pieces for each claim, combining NLI confidence with evidence relevance scores.
 
 ## 📊 Data Models
 
 ### Claim
-```python
+```json
 {
   "id": "uuid",
   "text": "The atomic claim text",
   "source_sentence": "Original sentence",
-  "status": "pending|searching|verifying|completed|failed"
+  "status": "pending | searching | verifying | completed | failed"
 }
 ```
 
 ### VerificationResult
-```python
+```json
 {
-  "claim": Claim,
-  "evidence_list": [Evidence],
-  "verdict": "SUPPORTED|REFUTED|NOT_ENOUGH_INFO",
-  "confidence": 0.0-1.0,
-  "reasoning": "Explanation",
-  "iterations_used": 1-3
+  "claim": "Claim",
+  "evidence_list": ["Evidence"],
+  "verdict": "SUPPORTED | REFUTED | NOT_ENOUGH_INFO",
+  "confidence": 0.92,
+  "reasoning": "Explanation text",
+  "iterations_used": 1
 }
 ```
 
 ### FinalReport
-```python
+```json
 {
   "id": "uuid",
   "original_text": "Input text",
-  "claims": [Claim],
-  "verification_results": [VerificationResult],
-  "overall_trust_score": 0.0-1.0,
+  "claims": ["Claim"],
+  "verification_results": ["VerificationResult"],
+  "overall_trust_score": 0.87,
   "summary": "Human-readable summary",
-  "processing_time_seconds": float
+  "processing_time_seconds": 91.2
 }
 ```
 
@@ -313,6 +335,9 @@ verify_claim
   │
   ├─── (low confidence) ───▶ generate_queries (loop)
   │
+  ▼
+finalize_claim
+  │
   ├─── (more claims) ───▶ prepare_claim
   │
   ▼
@@ -339,22 +364,13 @@ pytest tests/ --cov=claimlens --cov-report=html
 
 MIT License - See LICENSE file for details.
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
-
 ## 🔮 Future Improvements
 
-- [ ] Integrate custom DeBERTa-v3 NLI model
+- [x] Integrate custom DeBERTa-v3 NLI model
+- [x] Next.js frontend with streaming verification
 - [ ] Add Redis for job persistence
-- [ ] Implement rate limiting
 - [ ] Add claim deduplication
 - [ ] Support for multiple languages
 - [ ] Batch processing endpoint
-- [ ] WebSocket support for real-time updates
 - [ ] Source credibility scoring
 - [ ] Claim provenance tracking

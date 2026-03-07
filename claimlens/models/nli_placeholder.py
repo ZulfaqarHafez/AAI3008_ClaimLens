@@ -319,47 +319,140 @@ Analyze the evidence and provide your verdict."""
 
 
 class ClaimLensVerifier(BaseVerifier):
-    """Placeholder for custom ClaimLens DeBERTa-v3 NLI model.
+    """Verifier using the fine-tuned ClaimLens DeBERTa-v3 NLI model.
     
-    TODO: Integrate custom model when ready.
+    Labels: SUPPORTED (0), REFUTED (1), NEI (2).
+    Model: Zulfhagez/claimlens-deberta-v3-nli
     """
     
-    def __init__(self, model_path: str = None):
+    LABEL_MAP = {
+        0: Verdict.SUPPORTED,
+        1: Verdict.REFUTED,
+        2: Verdict.NOT_ENOUGH_INFO,
+    }
+    
+    def __init__(self, model_path: str = "Zulfhagez/claimlens-deberta-v3-nli"):
         """Initialize the ClaimLens verifier.
         
         Args:
-            model_path: Path to the custom model checkpoint
+            model_path: HuggingFace model ID or local path
         """
         self.model_path = model_path
         self._model = None
-        logger.warning(
-            "ClaimLensVerifier is a placeholder. "
-            "Custom DeBERTa-v3 model not yet integrated."
-        )
+        self._tokenizer = None
     
     def _load_model(self):
-        """Load the custom ClaimLens model."""
-        # TODO: Implement model loading
-        raise NotImplementedError(
-            "Custom ClaimLens model not yet implemented. "
-            "Use HuggingFaceNLIVerifier or OpenAIVerifier instead."
+        """Lazy-load the model and tokenizer on first use."""
+        if self._model is None:
+            try:
+                from transformers import AutoModelForSequenceClassification, AutoTokenizer
+                import torch  # noqa: F401 – ensure torch is available
+            except ImportError:
+                raise ImportError(
+                    "transformers and torch are required. "
+                    "Install with: pip install transformers torch sentencepiece accelerate"
+                )
+            logger.info(f"Loading ClaimLens NLI model: {self.model_path}")
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+            self._model = AutoModelForSequenceClassification.from_pretrained(self.model_path)
+            self._model.eval()
+    
+    def _run_nli(
+        self,
+        claim_text: str,
+        evidence_snippet: str,
+    ) -> Tuple[Verdict, float]:
+        """Run NLI inference for a single evidence-claim pair.
+        
+        Args:
+            claim_text: The claim text (hypothesis)
+            evidence_snippet: The evidence text (premise)
+            
+        Returns:
+            Tuple of (verdict_label, confidence)
+        """
+        import torch
+        
+        self._load_model()
+        
+        inputs = self._tokenizer(
+            evidence_snippet,
+            claim_text,
+            truncation=True,
+            max_length=256,
+            return_tensors="pt",
         )
+        
+        with torch.no_grad():
+            logits = self._model(**inputs).logits
+        
+        probs = torch.softmax(logits, dim=-1).squeeze()
+        pred_idx = int(probs.argmax())
+        confidence = float(probs[pred_idx])
+        label = self.LABEL_MAP[pred_idx]
+        
+        return label, confidence
     
     def verify(
         self, 
         claim: Claim, 
         evidence: List[Evidence]
     ) -> VerificationResult:
-        """Verify a claim using the custom model."""
-        # TODO: Implement verification logic
-        raise NotImplementedError("ClaimLens custom model not yet implemented.")
+        """Verify a claim against evidence using weighted voting."""
+        if not evidence:
+            return VerificationResult(
+                claim=claim,
+                evidence_list=[],
+                verdict=Verdict.NOT_ENOUGH_INFO,
+                confidence=0.3,
+                reasoning="No evidence available for verification.",
+            )
+        
+        # Weighted voting across all evidence pieces
+        weighted_scores: dict[Verdict, float] = {
+            Verdict.SUPPORTED: 0.0,
+            Verdict.REFUTED: 0.0,
+            Verdict.NOT_ENOUGH_INFO: 0.0,
+        }
+        
+        for ev in evidence:
+            label, conf = self._run_nli(claim.text, ev.snippet)
+            weighted_scores[label] += conf * ev.relevance_score
+        
+        # Determine verdict from highest weighted score
+        verdict = max(weighted_scores, key=weighted_scores.get)
+        total_weight = sum(weighted_scores.values())
+        confidence = (
+            weighted_scores[verdict] / total_weight
+            if total_weight > 0
+            else 0.0
+        )
+        confidence = min(confidence, 0.99)
+        
+        label_counts = {}
+        for v in Verdict:
+            if weighted_scores[v] > 0:
+                label_counts[v.value] = round(weighted_scores[v], 3)
+        
+        reasoning = (
+            f"Aggregated {len(evidence)} evidence piece(s) via weighted voting. "
+            f"Weighted scores: {label_counts}."
+        )
+        
+        return VerificationResult(
+            claim=claim,
+            evidence_list=evidence,
+            verdict=verdict,
+            confidence=round(confidence, 4),
+            reasoning=reasoning,
+        )
     
     def batch_verify(
         self, 
         claims_evidence: List[Tuple[Claim, List[Evidence]]]
     ) -> List[VerificationResult]:
         """Verify multiple claims in batch."""
-        raise NotImplementedError("ClaimLens custom model not yet implemented.")
+        return [self.verify(claim, ev) for claim, ev in claims_evidence]
 
 
 def get_verifier(verifier_type: str = "openai", **kwargs) -> BaseVerifier:
