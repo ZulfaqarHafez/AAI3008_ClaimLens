@@ -1,6 +1,7 @@
 """Scraper & Filter Agent for retrieving and filtering evidence."""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 
 from ..models.schemas import Evidence, Claim
@@ -70,25 +71,22 @@ Scoring guide:
         all_evidence = []
         seen_urls = set()
         
-        # Execute searches for each query
-        for query in queries:
+        # Execute searches for all queries in parallel
+        def _do_search(query):
             logger.debug(f"Executing search: {query}")
-            
-            try:
-                results = self.search_service.search(
-                    query=query,
-                    num_results=max_results_per_query
-                )
-                
-                # Deduplicate by URL
-                for evidence in results:
-                    if evidence.url not in seen_urls:
-                        seen_urls.add(evidence.url)
-                        all_evidence.append(evidence)
-                        
-            except Exception as e:
-                logger.error(f"Search failed for query '{query}': {e}")
-                continue
+            return self.search_service.search(query=query, num_results=max_results_per_query)
+        
+        with ThreadPoolExecutor(max_workers=min(len(queries), 5)) as executor:
+            futures = {executor.submit(_do_search, q): q for q in queries}
+            for future in as_completed(futures):
+                try:
+                    results = future.result()
+                    for evidence in results:
+                        if evidence.url not in seen_urls:
+                            seen_urls.add(evidence.url)
+                            all_evidence.append(evidence)
+                except Exception as e:
+                    logger.error(f"Search failed for query '{futures[future]}': {e}")
         
         if not all_evidence:
             logger.warning(f"No evidence found for claim: {claim.text[:50]}...")

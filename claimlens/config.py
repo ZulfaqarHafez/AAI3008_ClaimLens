@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     CONFIDENCE_THRESHOLD: float = 0.7
     MAX_EVIDENCE_PER_CLAIM: int = 5
     SEARCH_RESULTS_PER_QUERY: int = 5
+
     
     # Verifier Selection
     VERIFIER_TYPE: Literal["huggingface", "openai", "claimlens"] = "claimlens"

@@ -486,18 +486,22 @@ async def generate_sse_events(text: str):
                 )
                 yield f"event: claims_extracted\ndata: {event.model_dump_json()}\n\n"
             
-            if "_current_result" in state and state.get("_current_result"):
-                result = state["_current_result"]
-                event = StreamEvent(
-                    event_type="claim_verified",
-                    data={
-                        "claim_id": result.claim.id,
-                        "claim_text": result.claim.text,
-                        "verdict": result.verdict.value,
-                        "confidence": result.confidence,
-                    }
-                )
-                yield f"event: claim_verified\ndata: {event.model_dump_json()}\n\n"
+            # Only emit claim_verified on finalize_claim (not verify_claim,
+            # which can fire multiple times per claim during retries)
+            if node_name == "finalize_claim" and "verification_results" in state:
+                results_list = state["verification_results"]
+                if results_list:
+                    result = results_list[-1]  # latest finalized result
+                    event = StreamEvent(
+                        event_type="claim_verified",
+                        data={
+                            "claim_id": result.claim.id,
+                            "claim_text": result.claim.text,
+                            "verdict": result.verdict.value,
+                            "confidence": result.confidence,
+                        }
+                    )
+                    yield f"event: claim_verified\ndata: {event.model_dump_json()}\n\n"
             
             if "final_report" in state and state.get("final_report"):
                 report = state["final_report"]

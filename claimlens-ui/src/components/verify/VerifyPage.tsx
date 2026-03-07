@@ -73,7 +73,7 @@ export default function VerifyPage() {
         {phase === "loading" && (
           <div className="space-y-4">
             <PipelineVisualizer currentNode={currentNode} completedNodes={completedNodes} />
-            <ProgressTracker message={progressMsg} claims={claims} verified={verified} />
+            <ProgressTracker message={progressMsg} claims={claims} verified={verified} currentNode={currentNode} />
             <div className="text-center">
               <button
                 onClick={handleCancel}

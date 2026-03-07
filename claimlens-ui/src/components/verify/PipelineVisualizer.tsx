@@ -138,6 +138,11 @@ export default function PipelineVisualizer({ currentNode, completedNodes }: Prop
                 >
                   {step.label}
                 </span>
+                {status === "active" && (
+                  <span className="mt-0.5 text-[9px] text-indigo-400 animate-pulse max-w-[80px] text-center leading-tight">
+                    {step.description}
+                  </span>
+                )}
               </div>
 
               {/* Arrow connector */}
