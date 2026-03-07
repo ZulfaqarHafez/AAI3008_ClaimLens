@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import queue as queue_module
 import uuid
 from datetime import datetime
 from typing import Dict, Optional
@@ -414,6 +415,9 @@ async def delete_verification_job(job_id: str, _: bool = Depends(verify_api_key)
 async def generate_sse_events(text: str):
     """Generate Server-Sent Events for streaming verification.
     
+    Runs the synchronous LangGraph pipeline in a thread to avoid blocking
+    the async event loop, enabling real-time SSE flushing.
+    
     Args:
         text: Text to verify
         
@@ -430,8 +434,35 @@ async def generate_sse_events(text: str):
         )
         yield f"event: start\ndata: {start_event.model_dump_json()}\n\n"
         
-        # Stream state updates
-        for state_update in graph.stream(text):
+        # Bridge sync graph.stream() into async via thread + queue
+        q: queue_module.Queue = queue_module.Queue()
+        _SENTINEL = object()
+        
+        def _run_stream():
+            try:
+                for state_update in graph.stream(text):
+                    q.put(state_update)
+            except Exception as exc:
+                q.put(exc)
+            finally:
+                q.put(_SENTINEL)
+        
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(None, _run_stream)
+        
+        while True:
+            # Non-blocking poll keeps the event loop free to flush SSE
+            while q.empty():
+                await asyncio.sleep(0.05)
+            
+            item = q.get_nowait()
+            if item is _SENTINEL:
+                break
+            if isinstance(item, Exception):
+                raise item
+            
+            state_update = item
+            
             # Determine event type from state keys
             node_name = list(state_update.keys())[0] if state_update else "unknown"
             state = state_update.get(node_name) or {}
@@ -480,9 +511,6 @@ async def generate_sse_events(text: str):
                     }
                 )
                 yield f"event: complete\ndata: {event.model_dump_json()}\n\n"
-            
-            # Small delay for client processing
-            await asyncio.sleep(0.1)
         
     except Exception as e:
         logger.error(f"Streaming error: {e}")

@@ -1,6 +1,8 @@
 import type { FinalReport, ClaimsExtractedData, ClaimVerifiedData, CompleteData, StepData } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+// Direct backend URL for SSE streaming (bypasses Next.js proxy which buffers SSE)
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 export async function verifyText(
   text: string,
@@ -33,7 +35,7 @@ export async function verifyTextStream(
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
 ): Promise<FinalReport | null> {
-  const res = await fetch(`${API_BASE}/verify/stream`, {
+  const res = await fetch(`${BACKEND_URL}/verify/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
@@ -55,6 +57,7 @@ export async function verifyTextStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let finalReport: FinalReport | null = null;
+  let currentEventType = "";
 
   try {
     while (true) {
@@ -65,8 +68,6 @@ export async function verifyTextStream(
 
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
-
-      let currentEventType = "";
 
       for (const line of lines) {
         if (line.startsWith("event: ")) {
