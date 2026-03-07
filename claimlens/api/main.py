@@ -434,7 +434,14 @@ async def generate_sse_events(text: str):
         for state_update in graph.stream(text):
             # Determine event type from state keys
             node_name = list(state_update.keys())[0] if state_update else "unknown"
-            state = state_update.get(node_name, {})
+            state = state_update.get(node_name) or {}
+            
+            # Emit pipeline step event for every node
+            step_event = StreamEvent(
+                event_type="step",
+                data={"node": node_name}
+            )
+            yield f"event: step\ndata: {step_event.model_dump_json()}\n\n"
             
             # Create appropriate event based on node
             if "claims" in state and state.get("claims"):
@@ -448,7 +455,7 @@ async def generate_sse_events(text: str):
                 )
                 yield f"event: claims_extracted\ndata: {event.model_dump_json()}\n\n"
             
-            if "_current_result" in state:
+            if "_current_result" in state and state.get("_current_result"):
                 result = state["_current_result"]
                 event = StreamEvent(
                     event_type="claim_verified",
@@ -469,6 +476,7 @@ async def generate_sse_events(text: str):
                         "trust_score": report.overall_trust_score,
                         "summary": report.summary,
                         "total_claims": len(report.claims),
+                        "report": json.loads(report.model_dump_json()),
                     }
                 )
                 yield f"event: complete\ndata: {event.model_dump_json()}\n\n"

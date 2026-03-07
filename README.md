@@ -121,26 +121,39 @@ AAI3008_ClaimLens/
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── layout.tsx            # Root layout with Navbar + Footer
-│   │   │   ├── page.tsx              # Landing page (Hero, HowItWorks, Features, CTA)
-│   │   │   ├── verify/
-│   │   │   │   └── page.tsx          # Verification page
-│   │   │   └── globals.css           # Tailwind v4 theme
-│   │   ├── components/
-│   │   │   ├── Navbar.tsx            # Navigation bar
-│   │   │   ├── Hero.tsx              # Hero section with gradient text
-│   │   │   ├── HowItWorks.tsx        # 3-step explanation cards
-│   │   │   ├── Features.tsx          # Feature grid
-│   │   │   ├── CTA.tsx               # Call-to-action banner
-│   │   │   ├── Footer.tsx            # Page footer
+│   │   │   ├── page.tsx              # Landing page
+│   │   │   ├── error.tsx             # Global error boundary
+│   │   │   ├── not-found.tsx         # 404 page
+│   │   │   ├── loading.tsx           # Root loading skeleton
+│   │   │   ├── globals.css           # Tailwind v4 theme
 │   │   │   └── verify/
-│   │   │       ├── VerifyPage.tsx     # Main verify page (input → loading → results)
-│   │   │       ├── ProgressTracker.tsx # Real-time claim verification progress
-│   │   │       └── ResultsView.tsx    # Trust score banner + expandable result cards
+│   │   │       ├── page.tsx          # Verification page
+│   │   │       └── loading.tsx       # Verify route loading
+│   │   ├── components/
+│   │   │   ├── landing/              # Landing page sections
+│   │   │   │   ├── Hero.tsx
+│   │   │   │   ├── HowItWorks.tsx
+│   │   │   │   ├── Features.tsx
+│   │   │   │   └── CTA.tsx
+│   │   │   ├── layout/               # Layout components
+│   │   │   │   ├── Navbar.tsx
+│   │   │   │   └── Footer.tsx
+│   │   │   └── verify/               # Verification components
+│   │   │       ├── VerifyPage.tsx
+│   │   │       ├── ProgressTracker.tsx
+│   │   │       └── ResultsView.tsx
+│   │   ├── constants/                # Shared constants
+│   │   │   ├── verdicts.ts           # Verdict colors, icons, labels
+│   │   │   └── validation.ts         # Input validation limits
+│   │   ├── hooks/                    # Custom React hooks
+│   │   │   └── useVerification.ts    # Verification state + streaming logic
 │   │   ├── lib/
-│   │   │   └── api.ts               # API client with SSE streaming support
+│   │   │   └── api.ts               # API client with SSE + AbortController
 │   │   └── types/
-│   │       └── api.ts               # TypeScript types matching backend schemas
-│   ├── next.config.ts                # API proxy (rewrites /api/* → backend:8000)
+│   │       ├── api.ts               # TypeScript types matching backend schemas
+│   │       └── index.ts             # Barrel export
+│   ├── .env.local                    # Frontend env vars (API_BACKEND_URL)
+│   ├── next.config.ts                # API proxy (rewrites /api/* → backend)
 │   ├── package.json
 │   └── tsconfig.json
 │

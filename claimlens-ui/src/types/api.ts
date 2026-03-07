@@ -77,4 +77,19 @@ export interface CompleteData {
   trust_score: number;
   summary: string;
   total_claims: number;
+  report?: FinalReport;
+}
+
+export type PipelineNode =
+  | "decompose_claims"
+  | "prepare_claim"
+  | "generate_queries"
+  | "search_evidence"
+  | "verify_claim"
+  | "finalize_claim"
+  | "aggregate_results"
+  | "generate_report";
+
+export interface StepData {
+  node: PipelineNode;
 }

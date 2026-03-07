@@ -1,7 +1,7 @@
-import Hero from "@/components/Hero";
-import HowItWorks from "@/components/HowItWorks";
-import Features from "@/components/Features";
-import CTA from "@/components/CTA";
+import Hero from "@/components/landing/Hero";
+import HowItWorks from "@/components/landing/HowItWorks";
+import Features from "@/components/landing/Features";
+import CTA from "@/components/landing/CTA";
 
 export default function Home() {
   return (

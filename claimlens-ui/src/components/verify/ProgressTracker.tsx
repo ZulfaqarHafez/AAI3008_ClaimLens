@@ -1,18 +1,5 @@
 import { Loader2, CheckCircle2, Circle } from "lucide-react";
-import type { Verdict } from "@/types/api";
-
-interface ExtractedClaim {
-  id: string;
-  text: string;
-  status: string;
-}
-
-interface VerifiedClaim {
-  claim_id: string;
-  claim_text: string;
-  verdict: Verdict;
-  confidence: number;
-}
+import type { ExtractedClaim, VerifiedClaim } from "@/hooks/useVerification";
 
 interface Props {
   message: string;

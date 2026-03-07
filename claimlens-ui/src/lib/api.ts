@@ -1,12 +1,16 @@
-import type { FinalReport, ClaimsExtractedData, ClaimVerifiedData, CompleteData } from "@/types/api";
+import type { FinalReport, ClaimsExtractedData, ClaimVerifiedData, CompleteData, StepData } from "@/types/api";
 
-const API_BASE = "/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 
-export async function verifyText(text: string): Promise<FinalReport> {
+export async function verifyText(
+  text: string,
+  signal?: AbortSignal,
+): Promise<FinalReport> {
   const res = await fetch(`${API_BASE}/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
+    signal,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -17,6 +21,7 @@ export async function verifyText(text: string): Promise<FinalReport> {
 
 export interface StreamCallbacks {
   onStart?: () => void;
+  onStep?: (data: StepData) => void;
   onClaimsExtracted?: (data: ClaimsExtractedData) => void;
   onClaimVerified?: (data: ClaimVerifiedData) => void;
   onComplete?: (data: CompleteData) => void;
@@ -26,11 +31,13 @@ export interface StreamCallbacks {
 export async function verifyTextStream(
   text: string,
   callbacks: StreamCallbacks,
+  signal?: AbortSignal,
 ): Promise<FinalReport | null> {
   const res = await fetch(`${API_BASE}/verify/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
+    signal,
   });
 
   if (!res.ok) {
@@ -49,56 +56,59 @@ export async function verifyTextStream(
   let buffer = "";
   let finalReport: FinalReport | null = null;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, { stream: true });
 
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
 
-    let currentEventType = "";
+      let currentEventType = "";
 
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        currentEventType = line.slice(7).trim();
-      } else if (line.startsWith("data: ")) {
-        const raw = line.slice(6);
-        try {
-          const parsed = JSON.parse(raw);
-          const data = parsed.data ?? parsed;
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          currentEventType = line.slice(7).trim();
+        } else if (line.startsWith("data: ")) {
+          const raw = line.slice(6);
+          try {
+            const parsed = JSON.parse(raw);
+            const data = parsed.data ?? parsed;
 
-          switch (currentEventType) {
-            case "start":
-              callbacks.onStart?.();
-              break;
-            case "claims_extracted":
-              callbacks.onClaimsExtracted?.(data as ClaimsExtractedData);
-              break;
-            case "claim_verified":
-              callbacks.onClaimVerified?.(data as ClaimVerifiedData);
-              break;
-            case "complete":
-              callbacks.onComplete?.(data as CompleteData);
-              break;
-            case "error":
-              callbacks.onError?.(data.error ?? "Unknown error");
-              break;
+            switch (currentEventType) {
+              case "start":
+                callbacks.onStart?.();
+                break;
+              case "step":
+                callbacks.onStep?.(data as StepData);
+                break;
+              case "claims_extracted":
+                callbacks.onClaimsExtracted?.(data as ClaimsExtractedData);
+                break;
+              case "claim_verified":
+                callbacks.onClaimVerified?.(data as ClaimVerifiedData);
+                break;
+              case "complete":
+                callbacks.onComplete?.(data as CompleteData);
+                if (data.report) {
+                  finalReport = data.report as FinalReport;
+                }
+                break;
+              case "error":
+                callbacks.onError?.(data.error ?? "Unknown error");
+                break;
+            }
+          } catch {
+            // ignore malformed JSON
           }
-        } catch {
-          // ignore malformed JSON
+          currentEventType = "";
         }
-        currentEventType = "";
       }
     }
-  }
-
-  // After stream ends, fetch the full sync report for complete data
-  try {
-    finalReport = await verifyText(text);
-  } catch {
-    // streaming was the primary path; final report is optional
+  } finally {
+    reader.releaseLock();
   }
 
   return finalReport;

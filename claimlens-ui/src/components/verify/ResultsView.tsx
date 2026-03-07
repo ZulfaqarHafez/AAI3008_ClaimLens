@@ -2,26 +2,18 @@
 
 import { useState } from "react";
 import {
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
   ChevronDown,
   ChevronUp,
   RotateCcw,
   ExternalLink,
 } from "lucide-react";
 import type { FinalReport, VerificationResult, Verdict } from "@/types/api";
+import { VERDICT_CONFIG } from "@/constants/verdicts";
 
 interface Props {
   report: FinalReport;
   onReset: () => void;
 }
-
-const verdictConfig: Record<Verdict, { icon: typeof CheckCircle2; label: string; bg: string; text: string; bar: string }> = {
-  SUPPORTED: { icon: CheckCircle2, label: "Supported", bg: "bg-emerald-50", text: "text-emerald-700", bar: "bg-emerald-500" },
-  REFUTED: { icon: XCircle, label: "Refuted", bg: "bg-red-50", text: "text-red-700", bar: "bg-red-500" },
-  NOT_ENOUGH_INFO: { icon: AlertCircle, label: "Not Enough Info", bg: "bg-amber-50", text: "text-amber-700", bar: "bg-amber-500" },
-};
 
 export default function ResultsView({ report, onReset }: Props) {
   const trustPct = Math.round(report.overall_trust_score * 100);
@@ -72,7 +64,7 @@ export default function ResultsView({ report, onReset }: Props) {
 
 function ResultCard({ result, index }: { result: VerificationResult; index: number }) {
   const [open, setOpen] = useState(false);
-  const v = verdictConfig[result.verdict as Verdict] ?? verdictConfig.NOT_ENOUGH_INFO;
+  const v = VERDICT_CONFIG[result.verdict as Verdict] ?? VERDICT_CONFIG.NOT_ENOUGH_INFO;
   const Icon = v.icon;
   const confPct = Math.round(result.confidence * 100);
 

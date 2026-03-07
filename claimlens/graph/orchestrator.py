@@ -295,7 +295,7 @@ class ClaimLensGraph:
             
             if not queries:
                 logger.warning("No queries available for search")
-                return state
+                return {}
             
             # Execute search and filter
             evidence = self.scraper_agent.search_and_filter(
