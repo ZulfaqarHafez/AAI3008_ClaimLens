@@ -58,6 +58,10 @@ class Evidence(BaseModel):
         default=None, 
         description="Quality assessment of the source (high/medium/low)"
     )
+    published_date: Optional[str] = Field(
+        default=None,
+        description="Publication date of the source (from search API)"
+    )
     retrieved_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
@@ -67,7 +71,8 @@ class Evidence(BaseModel):
                 "title": "The Eiffel Tower - Official Website",
                 "snippet": "The Eiffel Tower is 330 metres (1,083 feet) tall...",
                 "relevance_score": 0.95,
-                "source_quality": "high"
+                "source_quality": "high",
+                "published_date": "2024-01-15"
             }
         }
 

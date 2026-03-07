@@ -32,6 +32,7 @@ export interface Evidence {
   snippet: string;
   relevance_score: number;
   source_quality?: string;
+  published_date?: string;
   retrieved_at?: string;
 }
 

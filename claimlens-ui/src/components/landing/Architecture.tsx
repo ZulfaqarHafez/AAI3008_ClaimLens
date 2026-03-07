@@ -61,10 +61,10 @@ interface StepProps {
 
 function Step({ icon, title, subtitle, children, accent = "indigo" }: StepProps) {
   const ring: Record<string, string> = {
-    indigo: "border-indigo-200 bg-white",
-    emerald: "border-emerald-200 bg-emerald-50/40",
-    amber: "border-amber-200 bg-amber-50/40",
-    sky: "border-sky-200 bg-sky-50/40",
+    indigo: "border-indigo-200 bg-white shadow-sm",
+    emerald: "border-emerald-200 bg-white shadow-sm",
+    amber: "border-amber-200 bg-white shadow-sm",
+    sky: "border-sky-200 bg-white shadow-sm",
   };
   const iconBg: Record<string, string> = {
     indigo: "bg-indigo-100 text-indigo-600",
@@ -74,7 +74,7 @@ function Step({ icon, title, subtitle, children, accent = "indigo" }: StepProps)
   };
 
   return (
-    <div className={`rounded-2xl border ${ring[accent] ?? ring.indigo} p-5 shadow-sm`}>
+    <div className={`w-full rounded-2xl border ${ring[accent] ?? ring.indigo} p-5`}>
       <div className="flex items-start gap-3">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg[accent] ?? iconBg.indigo}`}>
           {icon}
@@ -93,7 +93,7 @@ function Step({ icon, title, subtitle, children, accent = "indigo" }: StepProps)
 
 export default function Architecture() {
   return (
-    <section id="architecture" className="bg-white py-24">
+    <section id="architecture" className="bg-gray-50 py-24">
       <div className="mx-auto max-w-4xl px-6">
         {/* heading */}
         <div className="text-center">
@@ -110,7 +110,7 @@ export default function Architecture() {
         </div>
 
         {/* pipeline flow */}
-        <div className="mt-14 flex flex-col items-center gap-0">
+        <div className="mt-14 flex flex-col items-center gap-1">
           {/* 1 – Input */}
           <Step icon={<FileText className="h-5 w-5" />} title="Input Text" accent="sky">
             <p>User submits a paragraph or article to be fact-checked.</p>
@@ -238,7 +238,7 @@ export default function Architecture() {
               Computes an overall <strong>trust score</strong> for the original text using a
               weighted formula:
             </p>
-            <div className="mt-2 overflow-x-auto rounded-lg bg-gray-50 px-3 py-2 font-mono text-[11px] text-gray-700">
+            <div className="mt-2 overflow-x-auto rounded-lg bg-indigo-50 px-3 py-2 font-mono text-[11px] text-indigo-800">
               Trust = 0.5 × support_ratio + 0.3 × avg_confidence + 0.2 × evidence_quality
             </div>
             <p className="mt-2">
@@ -269,7 +269,7 @@ export default function Architecture() {
         </div>
 
         {/* tech stack summary */}
-        <div className="mt-14 rounded-2xl border border-gray-200 bg-gray-50 p-6">
+        <div className="mt-14 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <h3 className="text-center text-sm font-bold uppercase tracking-wider text-gray-600">
             Technology Stack
           </h3>

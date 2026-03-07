@@ -20,6 +20,9 @@ export default function Navbar() {
           <Link href="/#how-it-works" className="text-sm font-medium text-gray-600 transition hover:text-gray-900">
             How It Works
           </Link>
+          <Link href="/#architecture" className="text-sm font-medium text-gray-600 transition hover:text-gray-900">
+            Architecture
+          </Link>
           <Link href="/#features" className="text-sm font-medium text-gray-600 transition hover:text-gray-900">
             Features
           </Link>
@@ -27,7 +30,7 @@ export default function Navbar() {
             href="/verify"
             className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
           >
-            Start Verifying →
+            Start Verifying
           </Link>
         </div>
 
@@ -43,6 +46,9 @@ export default function Navbar() {
           <Link href="/#how-it-works" className="block py-2 text-sm font-medium text-gray-600" onClick={() => setOpen(false)}>
             How It Works
           </Link>
+          <Link href="/#architecture" className="block py-2 text-sm font-medium text-gray-600" onClick={() => setOpen(false)}>
+            Architecture
+          </Link>
           <Link href="/#features" className="block py-2 text-sm font-medium text-gray-600" onClick={() => setOpen(false)}>
             Features
           </Link>
@@ -51,7 +57,7 @@ export default function Navbar() {
             className="mt-2 block rounded-full bg-indigo-600 px-5 py-2 text-center text-sm font-semibold text-white"
             onClick={() => setOpen(false)}
           >
-            Start Verifying →
+            Start Verifying
           </Link>
         </div>
       )}

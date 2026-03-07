@@ -3,20 +3,21 @@ import { CheckCircle, Zap, Globe } from "lucide-react";
 
 export default function Hero() {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-indigo-50 via-white to-white pt-32 pb-20">
+    <section className="relative overflow-hidden bg-linear-to-b from-indigo-50 via-white to-white pt-36 pb-24">
       {/* Decorative blobs */}
-      <div className="pointer-events-none absolute -top-40 -right-40 h-[600px] w-[600px] rounded-full bg-indigo-100/50 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-20 -left-40 h-[400px] w-[400px] rounded-full bg-purple-100/40 blur-3xl" />
+      <div className="pointer-events-none absolute -top-40 -right-40 h-150 w-150 rounded-full bg-indigo-100/50 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-20 -left-40 h-100 w-100 rounded-full bg-purple-100/40 blur-3xl" />
 
-      <div className="relative mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-2 lg:items-center">
+      <div className="relative mx-auto grid max-w-7xl gap-16 px-6 lg:grid-cols-2 lg:items-center">
         {/* Text */}
         <div>
           <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-indigo-100 px-4 py-1.5 text-sm font-medium text-indigo-700">
-            🤖 Powered by DeBERTa NLI + LangGraph
+            <Zap className="h-4 w-4" />
+            Powered by DeBERTa NLI + LangGraph
           </div>
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-gray-900 sm:text-5xl lg:text-6xl">
             Verify any claim with{" "}
-            <span className="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            <span className="bg-linear-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
               AI-powered
             </span>{" "}
             fact-checking
@@ -31,7 +32,7 @@ export default function Hero() {
               href="/verify"
               className="rounded-full bg-indigo-600 px-8 py-3 text-base font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
             >
-              Start Verifying →
+              Start Verifying
             </Link>
             <Link
               href="#how-it-works"
@@ -61,9 +62,8 @@ export default function Hero() {
             <div className="mb-5 rounded-lg bg-gray-50 p-4 text-sm italic text-gray-700">
               &ldquo;The Eiffel Tower is 330 meters tall and was completed in 1889.&rdquo;
             </div>
-            <ResultRow verdict="Supported" text="Height confirmed at 330m" confidence={98} color="emerald" />
-            <ResultRow verdict="Supported" text="Completed March 1889" confidence={95} color="emerald" />
-            <ResultRow verdict="Refuted" text="Great Wall not visible from space" confidence={91} color="red" />
+            <ResultRow verdict="Supported" text="Height confirmed at 330 metres" confidence={98} color="emerald" />
+            <ResultRow verdict="Supported" text="Completed in 1889 confirmed" confidence={95} color="emerald" />
           </div>
         </div>
       </div>

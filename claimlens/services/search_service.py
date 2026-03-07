@@ -108,7 +108,8 @@ class TavilySearchService(SearchService):
                     title=result.get("title", "Unknown"),
                     snippet=result.get("content", "")[:1000],  # Limit snippet length
                     relevance_score=relevance,
-                    source_quality=source_quality
+                    source_quality=source_quality,
+                    published_date=result.get("published_date"),
                 )
                 evidence_list.append(evidence)
             
