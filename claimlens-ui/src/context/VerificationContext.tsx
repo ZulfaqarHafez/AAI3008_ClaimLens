@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useRef } from "react";
 import { verifyTextStream, verifyText, type StreamCallbacks } from "@/lib/api";
-import type { FinalReport, ClaimsExtractedData, ClaimVerifiedData, PipelineNode } from "@/types/api";
+import type { FinalReport, ClaimsExtractedData, ClaimVerifiedData, PipelineNode, Evidence } from "@/types/api";
 import { MIN_TEXT_LENGTH } from "@/constants/validation";
 
 export type Phase = "input" | "loading" | "results";
@@ -18,6 +18,8 @@ export interface VerifiedClaim {
   claim_text: string;
   verdict: string;
   confidence: number;
+  reasoning?: string;
+  evidence?: Evidence[];
 }
 
 interface VerificationState {
@@ -91,6 +93,7 @@ export function VerificationProvider({ children }: { children: React.ReactNode }
           prepare_claim: `Preparing claims in parallel${claimProgress}...`,
           generate_queries: `Generating search queries${claimProgress}...`,
           search_evidence: `Searching for evidence${claimProgress}...`,
+          assess_credibility: `Assessing source credibility${claimProgress}...`,
           verify_claim: `Running NLI verification${claimProgress}...`,
           finalize_claim: `Finalizing claim result${claimProgress}...`,
           aggregate_results: "Aggregating all results...",

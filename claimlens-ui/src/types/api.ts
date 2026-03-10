@@ -32,6 +32,8 @@ export interface Evidence {
   snippet: string;
   relevance_score: number;
   source_quality?: string;
+  credibility_score?: number;
+  credibility_reasoning?: string;
   published_date?: string;
   retrieved_at?: string;
 }
@@ -72,6 +74,8 @@ export interface ClaimVerifiedData {
   claim_text: string;
   verdict: Verdict;
   confidence: number;
+  reasoning?: string;
+  evidence?: Evidence[];
 }
 
 export interface CompleteData {
@@ -86,6 +90,7 @@ export type PipelineNode =
   | "prepare_claim"
   | "generate_queries"
   | "search_evidence"
+  | "assess_credibility"
   | "verify_claim"
   | "finalize_claim"
   | "aggregate_results"

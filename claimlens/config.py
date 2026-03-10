@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     SERPAPI_KEY: str = ""
     
     # LLM Configuration
-    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_MODEL: str = "gpt-4o"
     LLM_TEMPERATURE: float = 0.1
     
     # Verification Configuration

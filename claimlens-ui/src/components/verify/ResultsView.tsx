@@ -231,6 +231,13 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
                   <p className="mt-1 text-xs leading-relaxed text-gray-500">{e.snippet}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-400">
                     <span>Relevance: {Math.round(e.relevance_score * 100)}%</span>
+                    {e.credibility_score != null && (
+                      <span className={`font-semibold ${
+                        e.credibility_score >= 0.7 ? "text-emerald-500" : e.credibility_score >= 0.4 ? "text-amber-500" : "text-red-500"
+                      }`}>
+                        Credibility: {Math.round(e.credibility_score * 100)}%
+                      </span>
+                    )}
                     {e.source_quality && <span>Quality: {e.source_quality}</span>}
                     {e.published_date && (
                       <span className="flex items-center gap-1">
@@ -239,6 +246,9 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
                       </span>
                     )}
                   </div>
+                  {e.credibility_reasoning && (
+                    <p className="mt-1 text-xs italic text-gray-400">{e.credibility_reasoning}</p>
+                  )}
                 </div>
               ))}
             </div>

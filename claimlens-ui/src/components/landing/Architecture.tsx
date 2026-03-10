@@ -3,7 +3,7 @@ import {
   Scissors,
   Search,
   Globe,
-  Filter,
+  ShieldCheck,
   Brain,
   RotateCcw,
   BarChart3,
@@ -104,8 +104,8 @@ export default function Architecture() {
             How ClaimLens Works Under&nbsp;the&nbsp;Hood
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-500">
-            An agentic pipeline powered by LangGraph orchestrates four specialised agents
-            to decompose, search, filter, and verify every claim.
+            An agentic pipeline powered by LangGraph orchestrates five specialised agents
+            to decompose, search, assess credibility, and verify every claim.
           </p>
         </div>
 
@@ -123,7 +123,7 @@ export default function Architecture() {
           <Step
             icon={<Scissors className="h-5 w-5" />}
             title="Decomposition Agent"
-            subtitle="GPT-4o-mini  ·  Temperature 0.1"
+            subtitle="GPT-4o  ·  Temperature 0.1"
             accent="indigo"
           >
             <p>
@@ -149,7 +149,7 @@ export default function Architecture() {
             <Step
               icon={<Search className="h-5 w-5" />}
               title="Search Architect Agent"
-              subtitle="GPT-4o-mini  ·  Temperature 0.3"
+              subtitle="GPT-4o  ·  Temperature 0.3"
               accent="indigo"
             >
               <p>
@@ -174,8 +174,8 @@ export default function Architecture() {
             >
               <p>
                 Executes queries in <strong>parallel</strong> via the Tavily search API
-                (advanced depth). Then applies a <strong>GPT-4o-mini relevance filter</strong>{" "}
-                that scores each result&apos;s relevance and source quality (high / medium / low).
+                (advanced depth). Then applies a <strong>GPT-4o relevance filter</strong>{" "}
+                that scores each result&apos;s relevance to the claim.
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Tag color="emerald">Parallel Search</Tag>
@@ -186,7 +186,44 @@ export default function Architecture() {
 
             <Arrow />
 
-            {/* 3c – Verifier */}
+            {/* 3c – Credibility */}
+            <Step
+              icon={<ShieldCheck className="h-5 w-5" />}
+              title="Credibility Agent"
+              subtitle="GPT-4o  ·  Source Trustworthiness Assessment"
+              accent="sky"
+            >
+              <p>
+                Evaluates every source on three dimensions using GPT-4o:
+              </p>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg bg-sky-50 p-2">
+                  <p className="text-[11px] font-semibold text-sky-700">Author Expertise</p>
+                  <p className="mt-0.5 text-[10px] text-sky-600">40% weight</p>
+                </div>
+                <div className="rounded-lg bg-sky-50 p-2">
+                  <p className="text-[11px] font-semibold text-sky-700">Bias Detection</p>
+                  <p className="mt-0.5 text-[10px] text-sky-600">40% weight</p>
+                </div>
+                <div className="rounded-lg bg-sky-50 p-2">
+                  <p className="text-[11px] font-semibold text-sky-700">Recency</p>
+                  <p className="mt-0.5 text-[10px] text-sky-600">20% weight</p>
+                </div>
+              </div>
+              <p className="mt-2">
+                Produces a <strong>credibility score</strong> (0–100%) per source, replacing
+                the simple domain-based quality labels. This score feeds directly into the
+                trust score calculation.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Tag color="sky">Credibility Score</Tag>
+                <Tag color="sky">Per-source Reasoning</Tag>
+              </div>
+            </Step>
+
+            <Arrow />
+
+            {/* 3d – Verifier */}
             <Step
               icon={<Brain className="h-5 w-5" />}
               title="ClaimLens Verifier"
@@ -220,7 +257,7 @@ export default function Architecture() {
 
             <Arrow />
 
-            {/* 3d – Retry */}
+            {/* 3e – Retry */}
             <div className="flex justify-center">
               <RetryArrow />
             </div>
@@ -243,7 +280,8 @@ export default function Architecture() {
             </div>
             <p className="mt-2">
               Refuted claims are penalised 0.5× in the support ratio. Evidence quality is
-              derived from source-quality labels (high&nbsp;= 1.0, medium&nbsp;= 0.6, low&nbsp;= 0.3).
+              derived from the <strong>credibility scores</strong> produced by the
+              Credibility Agent (0.0–1.0 per source).
             </p>
           </Step>
 
@@ -276,7 +314,7 @@ export default function Architecture() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               { label: "Orchestration", value: "LangGraph State Machine" },
-              { label: "LLM", value: "GPT-4o-mini (OpenAI)" },
+              { label: "LLM", value: "GPT-4o (OpenAI)" },
               { label: "NLI Model", value: "DeBERTa-v3 (Fine-tuned)" },
               { label: "Search", value: "Tavily API" },
               { label: "Backend", value: "FastAPI + SSE" },

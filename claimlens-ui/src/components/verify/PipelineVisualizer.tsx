@@ -4,6 +4,7 @@ import {
   FileText,
   Search,
   Globe,
+  ShieldCheck,
   Brain,
   CheckCircle2,
   BarChart3,
@@ -44,6 +45,12 @@ const PIPELINE_STEPS: {
     description: "Collecting web evidence",
   },
   {
+    node: "assess_credibility",
+    label: "Credibility",
+    icon: ShieldCheck,
+    description: "Assessing source credibility",
+  },
+  {
     node: "verify_claim",
     label: "Verify",
     icon: Brain,
@@ -69,6 +76,7 @@ const NODE_TO_STEP: Record<string, PipelineNode> = {
   prepare_claim: "generate_queries",
   generate_queries: "generate_queries",
   search_evidence: "search_evidence",
+  assess_credibility: "assess_credibility",
   verify_claim: "verify_claim",
   finalize_claim: "verify_claim",
   aggregate_results: "aggregate_results",

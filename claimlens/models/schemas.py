@@ -55,8 +55,18 @@ class Evidence(BaseModel):
         description="Relevance score of the evidence to the claim"
     )
     source_quality: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="Quality assessment of the source (high/medium/low)"
+    )
+    credibility_score: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Credibility score from AI assessment (0.0-1.0)"
+    )
+    credibility_reasoning: Optional[str] = Field(
+        default=None,
+        description="Brief explanation of the credibility assessment"
     )
     published_date: Optional[str] = Field(
         default=None,
@@ -170,17 +180,12 @@ class FinalReport(BaseModel):
         # Calculate average confidence
         avg_confidence = sum(r.confidence for r in self.verification_results) / total_claims
         
-        # Calculate evidence quality score
+        # Calculate evidence quality score using credibility scores
         quality_scores = []
         for result in self.verification_results:
             for evidence in result.evidence_list:
-                if evidence.source_quality == "high":
-                    quality_scores.append(1.0)
-                elif evidence.source_quality == "medium":
-                    quality_scores.append(0.6)
-                else:
-                    quality_scores.append(0.3)
-        
+                quality_scores.append(evidence.credibility_score)
+
         evidence_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0.5
         
         # Weighted average

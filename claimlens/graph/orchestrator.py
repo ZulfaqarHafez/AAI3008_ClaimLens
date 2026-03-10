@@ -19,6 +19,7 @@ from ..agents.decomposition import DecompositionAgent
 from ..agents.search_architect import SearchArchitectAgent
 from ..agents.scraper import ScraperAgent
 from ..agents.verifier import VerifierAgent
+from ..agents.credibility import CredibilityAgent
 from ..services.llm_service import LLMService
 from ..config import settings
 
@@ -71,24 +72,27 @@ class ClaimLensGraph:
         decomposition_agent: Optional[DecompositionAgent] = None,
         search_architect: Optional[SearchArchitectAgent] = None,
         scraper_agent: Optional[ScraperAgent] = None,
-        verifier_agent: Optional[VerifierAgent] = None
+        verifier_agent: Optional[VerifierAgent] = None,
+        credibility_agent: Optional[CredibilityAgent] = None
     ):
         """Initialize the orchestrator with agents.
-        
+
         Args:
             llm_service: Shared LLM service instance
             decomposition_agent: Custom decomposition agent
             search_architect: Custom search architect agent
             scraper_agent: Custom scraper agent
             verifier_agent: Custom verifier agent
+            credibility_agent: Custom credibility agent
         """
         self.llm_service = llm_service or LLMService()
-        
+
         # Initialize agents (allow dependency injection)
         self.decomposition_agent = decomposition_agent or DecompositionAgent(self.llm_service)
         self.search_architect = search_architect or SearchArchitectAgent(self.llm_service)
         self.scraper_agent = scraper_agent or ScraperAgent(llm_service=self.llm_service)
         self.verifier_agent = verifier_agent or VerifierAgent(llm_service=self.llm_service)
+        self.credibility_agent = credibility_agent or CredibilityAgent(self.llm_service)
         
         # Build the graph
         self.graph = self._build_graph()
@@ -110,15 +114,16 @@ class ClaimLensGraph:
         graph.add_node("prepare_claim", self._prepare_claim_node)
         graph.add_node("generate_queries", self._generate_queries_node)
         graph.add_node("search_evidence", self._search_evidence_node)
+        graph.add_node("assess_credibility", self._assess_credibility_node)
         graph.add_node("verify_claim", self._verify_claim_node)
         graph.add_node("finalize_claim", self._finalize_claim_node)
         graph.add_node("aggregate_results", self._aggregate_results_node)
         graph.add_node("generate_report", self._generate_report_node)
-        
+
         # Add edges
         # START -> decompose_claims
         graph.add_edge(START, "decompose_claims")
-        
+
         # decompose_claims -> prepare_claim or generate_report (if no claims)
         graph.add_conditional_edges(
             "decompose_claims",
@@ -128,16 +133,19 @@ class ClaimLensGraph:
                 "generate_report": "generate_report"
             }
         )
-        
+
         # prepare_claim -> generate_queries
         graph.add_edge("prepare_claim", "generate_queries")
-        
+
         # generate_queries -> search_evidence
         graph.add_edge("generate_queries", "search_evidence")
-        
-        # search_evidence -> verify_claim
-        graph.add_edge("search_evidence", "verify_claim")
-        
+
+        # search_evidence -> assess_credibility
+        graph.add_edge("search_evidence", "assess_credibility")
+
+        # assess_credibility -> verify_claim
+        graph.add_edge("assess_credibility", "verify_claim")
+
         # verify_claim -> continue searching OR finalize this claim
         graph.add_conditional_edges(
             "verify_claim",
@@ -147,7 +155,7 @@ class ClaimLensGraph:
                 "finalize_claim": "finalize_claim",       # Done with this claim
             }
         )
-        
+
         # finalize_claim -> next claim or aggregate
         graph.add_conditional_edges(
             "finalize_claim",
@@ -157,10 +165,10 @@ class ClaimLensGraph:
                 "aggregate_results": "aggregate_results"  # All claims done
             }
         )
-        
+
         # aggregate_results -> generate_report
         graph.add_edge("aggregate_results", "generate_report")
-        
+
         # generate_report -> END
         graph.add_edge("generate_report", END)
         
@@ -331,6 +339,49 @@ class ClaimLensGraph:
             logger.error(f"Evidence search failed: {e}")
             return {}
     
+    def _assess_credibility_node(self, state: GraphState) -> GraphState:
+        """Assess credibility of evidence sources for the current claim.
+
+        Args:
+            state: Current graph state
+
+        Returns:
+            Updated state with credibility-scored evidence
+        """
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+        current_claim = claims[current_index]
+
+        try:
+            evidence = state["evidence_buffer"].get(current_claim.id, [])
+
+            if not evidence:
+                logger.warning("No evidence to assess credibility for")
+                return {}
+
+            # Run credibility assessment
+            assessed_evidence = self.credibility_agent.assess_credibility(
+                current_claim,
+                evidence
+            )
+
+            evidence_buffer = {
+                **state["evidence_buffer"],
+                current_claim.id: assessed_evidence
+            }
+
+            logger.info(
+                f"Credibility assessed for {len(assessed_evidence)} sources"
+            )
+
+            return {
+                "evidence_buffer": evidence_buffer
+            }
+
+        except Exception as e:
+            logger.error(f"Credibility assessment failed: {e}")
+            return {}
+
     def _verify_claim_node(self, state: GraphState) -> GraphState:
         """Verify the current claim against collected evidence.
         

@@ -492,6 +492,20 @@ async def generate_sse_events(text: str):
                 results_list = state["verification_results"]
                 if results_list:
                     result = results_list[-1]  # latest finalized result
+                    # Include evidence/sources so frontend can show them immediately
+                    evidence_data = [
+                        {
+                            "url": e.url,
+                            "title": e.title,
+                            "snippet": e.snippet[:300],
+                            "relevance_score": e.relevance_score,
+                            "source_quality": e.source_quality,
+                            "credibility_score": e.credibility_score,
+                            "credibility_reasoning": e.credibility_reasoning,
+                            "published_date": e.published_date,
+                        }
+                        for e in result.evidence_list
+                    ]
                     event = StreamEvent(
                         event_type="claim_verified",
                         data={
@@ -499,6 +513,8 @@ async def generate_sse_events(text: str):
                             "claim_text": result.claim.text,
                             "verdict": result.verdict.value,
                             "confidence": result.confidence,
+                            "reasoning": result.reasoning,
+                            "evidence": evidence_data,
                         }
                     )
                     yield f"event: claim_verified\ndata: {event.model_dump_json()}\n\n"
