@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     
     # Verifier Selection
     VERIFIER_TYPE: Literal["huggingface", "openai", "claimlens"] = "claimlens"
-    HF_NLI_MODEL: str = "facebook/bart-large-mnli"
+    HF_NLI_MODEL: str = "Zulfhagez/claimlens-deberta-v3-nli"
     
     # Search Provider
     SEARCH_PROVIDER: Literal["tavily", "serpapi"] = "tavily"
