@@ -16,6 +16,14 @@ const THINKING_MESSAGES: Record<string, string[]> = {
     "Preparing the next claim...",
     "Setting up verification context...",
   ],
+  enrich_context: [
+    "Adding helpful context...",
+    "Linking venues and titles...",
+  ],
+  frame_claim: [
+    "Structuring the claim event...",
+    "Extracting key dimensions...",
+  ],
   generate_queries: [
     "Crafting search queries...",
     "Thinking about the best angles to verify this...",
@@ -26,6 +34,10 @@ const THINKING_MESSAGES: Record<string, string[]> = {
     "Checking reliable sources...",
     "Gathering relevant articles...",
     "Retrieving and filtering results...",
+  ],
+  frame_evidence: [
+    "Structuring evidence events...",
+    "Aligning evidence to claim context...",
   ],
   assess_credibility: [
     "Evaluating source credibility...",

@@ -247,17 +247,26 @@ class OpenAIVerifier(BaseVerifier):
 Your task is to determine if the provided evidence SUPPORTS, REFUTES, or provides NOT_ENOUGH_INFO for the given claim.
 
 Rules:
-1. SUPPORTED: The evidence clearly confirms the claim is true
-2. REFUTED: The evidence clearly contradicts the claim
-3. NOT_ENOUGH_INFO: The evidence is insufficient, irrelevant, or inconclusive
+1. Verify the FULL EVENT described in the claim. Do not split into independent facts.
+2. The SAME EVENT must match across person, action, location/venue, time/date, and context.
+3. Use contextual reasoning for equivalent or hierarchical concepts.
+   Examples: "Committee of Supply debate" is part of Parliament; "DPM" means "Deputy Prime Minister";
+   speaking during a parliamentary debate means speaking in Parliament.
+4. If evidence confirms the event but uses different wording, treat it as SUPPORTING.
+5. If evidence contradicts any key dimension (person, date, location, or event), REFUTE.
+6. If evidence is incomplete or cannot confirm the full event, NOT_ENOUGH_INFO.
+7. Prefer authoritative sources in this order: government, major news, academic/institutional, other web, social.
 
 Respond with a JSON object containing:
 - verdict: "SUPPORTED", "REFUTED", or "NOT_ENOUGH_INFO"
 - confidence: A float between 0.0 and 1.0
 - reasoning: A brief explanation (1-2 sentences)"""
 
+        context_block = self._format_context_block(claim)
+
         user_prompt = f"""Claim to verify:
 "{claim.text}"
+{context_block}
 
 Evidence:
 {evidence_text}
@@ -316,6 +325,28 @@ Analyze the evidence and provide your verdict."""
             result = self.verify(claim, evidence)
             results.append(result)
         return results
+
+    def _format_context_block(self, claim: Claim) -> str:
+        context = getattr(claim, "context", None)
+        if not context:
+            return ""
+
+        lines = []
+        if context.normalized_claim and context.normalized_claim != claim.text:
+            lines.append(f"Normalized claim: {context.normalized_claim}")
+        if context.context_summary:
+            lines.append(f"Context summary: {context.context_summary}")
+        if context.temporal_context:
+            lines.append(f"Temporal context: {context.temporal_context}")
+        if context.venue_context:
+            lines.append(f"Venue context: {context.venue_context}")
+        if context.entity_aliases:
+            lines.append(f"Entity aliases: {', '.join(context.entity_aliases[:6])}")
+
+        if not lines:
+            return ""
+
+        return "\nADDITIONAL CONTEXT:\n" + "\n".join(f"- {line}" for line in lines)
 
 
 class ClaimLensVerifier(BaseVerifier):

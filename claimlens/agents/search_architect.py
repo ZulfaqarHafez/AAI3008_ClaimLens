@@ -72,11 +72,14 @@ Respond with a JSON object containing:
         Returns:
             List of search query strings
         """
+        context_block = self._format_context_block(claim)
+
         user_prompt = f"""Generate {num_queries} diverse search queries to verify this claim:
 
 CLAIM: "{claim.text}"
 
 CONTEXT (original sentence): "{claim.source_sentence}"
+{context_block}
 
 Generate queries that will help find evidence to support OR refute this claim."""
 
@@ -175,9 +178,12 @@ Generate queries that will help find evidence to support OR refute this claim.""
         Returns:
             List of new, refined search queries
         """
+        context_block = self._format_context_block(claim)
+
         user_prompt = f"""Generate 2 new search queries to find missing evidence for this claim.
 
 CLAIM: "{claim.text}"
+{context_block}
 
 PREVIOUS QUERIES TRIED:
 {chr(10).join(f'- {q}' for q in previous_queries)}
@@ -212,3 +218,28 @@ Generate different queries that might find the missing evidence."""
         except Exception as e:
             logger.error(f"Refined query generation failed: {e}")
             return []
+
+    def _format_context_block(self, claim: Claim) -> str:
+        """Format optional context block for prompts."""
+        context = getattr(claim, "context", None)
+        if not context:
+            return ""
+
+        lines = []
+        if context.normalized_claim and context.normalized_claim != claim.text:
+            lines.append(f"Normalized claim: {context.normalized_claim}")
+        if context.context_summary:
+            lines.append(f"Context summary: {context.context_summary}")
+        if context.temporal_context:
+            lines.append(f"Temporal context: {context.temporal_context}")
+        if context.venue_context:
+            lines.append(f"Venue context: {context.venue_context}")
+        if context.entity_aliases:
+            lines.append(f"Entity aliases: {', '.join(context.entity_aliases[:6])}")
+        if context.search_hints:
+            lines.append(f"Search hints: {', '.join(context.search_hints[:6])}")
+
+        if not lines:
+            return ""
+
+        return "ADDITIONAL CONTEXT:\n" + "\n".join(f"- {line}" for line in lines)

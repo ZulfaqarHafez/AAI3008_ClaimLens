@@ -16,10 +16,12 @@ from ..models.schemas import (
     Verdict
 )
 from ..agents.decomposition import DecompositionAgent
+from ..agents.context import ContextAgent
 from ..agents.search_architect import SearchArchitectAgent
 from ..agents.scraper import ScraperAgent
 from ..agents.verifier import VerifierAgent
 from ..agents.credibility import CredibilityAgent
+from ..agents.event_frame import EventFrameAgent
 from ..services.llm_service import LLMService
 from ..config import settings
 
@@ -70,29 +72,35 @@ class ClaimLensGraph:
         self,
         llm_service: Optional[LLMService] = None,
         decomposition_agent: Optional[DecompositionAgent] = None,
+        context_agent: Optional[ContextAgent] = None,
         search_architect: Optional[SearchArchitectAgent] = None,
         scraper_agent: Optional[ScraperAgent] = None,
         verifier_agent: Optional[VerifierAgent] = None,
-        credibility_agent: Optional[CredibilityAgent] = None
+        credibility_agent: Optional[CredibilityAgent] = None,
+        event_frame_agent: Optional[EventFrameAgent] = None
     ):
         """Initialize the orchestrator with agents.
 
         Args:
             llm_service: Shared LLM service instance
             decomposition_agent: Custom decomposition agent
+            context_agent: Custom context agent
             search_architect: Custom search architect agent
             scraper_agent: Custom scraper agent
             verifier_agent: Custom verifier agent
             credibility_agent: Custom credibility agent
+            event_frame_agent: Custom event frame agent
         """
         self.llm_service = llm_service or LLMService()
 
         # Initialize agents (allow dependency injection)
         self.decomposition_agent = decomposition_agent or DecompositionAgent(self.llm_service)
+        self.context_agent = context_agent or ContextAgent(self.llm_service)
         self.search_architect = search_architect or SearchArchitectAgent(self.llm_service)
         self.scraper_agent = scraper_agent or ScraperAgent(llm_service=self.llm_service)
         self.verifier_agent = verifier_agent or VerifierAgent(llm_service=self.llm_service)
         self.credibility_agent = credibility_agent or CredibilityAgent(self.llm_service)
+        self.event_frame_agent = event_frame_agent or EventFrameAgent(self.llm_service)
         
         # Build the graph
         self.graph = self._build_graph()
@@ -112,8 +120,11 @@ class ClaimLensGraph:
         # Add nodes
         graph.add_node("decompose_claims", self._decompose_claims_node)
         graph.add_node("prepare_claim", self._prepare_claim_node)
+        graph.add_node("enrich_context", self._enrich_context_node)
+        graph.add_node("frame_claim", self._frame_claim_node)
         graph.add_node("generate_queries", self._generate_queries_node)
         graph.add_node("search_evidence", self._search_evidence_node)
+        graph.add_node("frame_evidence", self._frame_evidence_node)
         graph.add_node("assess_credibility", self._assess_credibility_node)
         graph.add_node("verify_claim", self._verify_claim_node)
         graph.add_node("finalize_claim", self._finalize_claim_node)
@@ -134,14 +145,17 @@ class ClaimLensGraph:
             }
         )
 
-        # prepare_claim -> generate_queries
-        graph.add_edge("prepare_claim", "generate_queries")
+        # prepare_claim -> enrich_context -> frame_claim -> generate_queries
+        graph.add_edge("prepare_claim", "enrich_context")
+        graph.add_edge("enrich_context", "frame_claim")
+        graph.add_edge("frame_claim", "generate_queries")
 
         # generate_queries -> search_evidence
         graph.add_edge("generate_queries", "search_evidence")
 
-        # search_evidence -> assess_credibility
-        graph.add_edge("search_evidence", "assess_credibility")
+        # search_evidence -> frame_evidence -> assess_credibility
+        graph.add_edge("search_evidence", "frame_evidence")
+        graph.add_edge("frame_evidence", "assess_credibility")
 
         # assess_credibility -> verify_claim
         graph.add_edge("assess_credibility", "verify_claim")
@@ -231,6 +245,53 @@ class ClaimLensGraph:
                 f"{current_claim.text[:50]}..."
             )
         
+        return {}
+
+    def _enrich_context_node(self, state: GraphState) -> GraphState:
+        """Enrich the current claim with contextual information.
+        
+        Args:
+            state: Current graph state
+            
+        Returns:
+            Updated state (claims mutated in place with context)
+        """
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+        
+        if current_index >= len(claims):
+            return {}
+
+        current_claim = claims[current_index]
+
+        try:
+            current_claim.context = self.context_agent.enrich(current_claim)
+            logger.debug(
+                "Context enriched for claim: %s",
+                current_claim.text[:50]
+            )
+        except Exception as e:
+            logger.error(f"Context enrichment failed: {e}")
+        
+        return {}
+
+    def _frame_claim_node(self, state: GraphState) -> GraphState:
+        """Extract an event frame for the current claim."""
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+
+        if current_index >= len(claims):
+            return {}
+
+        current_claim = claims[current_index]
+
+        try:
+            frame = self.event_frame_agent.frame_claim(current_claim)
+            if current_claim.context:
+                current_claim.context.event_frame = frame
+        except Exception as e:
+            logger.error(f"Claim framing failed: {e}")
+
         return {}
     
     def _generate_queries_node(self, state: GraphState) -> GraphState:
@@ -337,6 +398,30 @@ class ClaimLensGraph:
             
         except Exception as e:
             logger.error(f"Evidence search failed: {e}")
+            return {}
+
+    def _frame_evidence_node(self, state: GraphState) -> GraphState:
+        """Extract event frames for evidence snippets."""
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+        current_claim = claims[current_index]
+
+        try:
+            evidence = state["evidence_buffer"].get(current_claim.id, [])
+            if not evidence:
+                return {}
+
+            for ev in evidence:
+                if ev.event_frame is None:
+                    ev.event_frame = self.event_frame_agent.frame_evidence(current_claim, ev)
+
+            evidence_buffer = {
+                **state["evidence_buffer"],
+                current_claim.id: evidence
+            }
+            return {"evidence_buffer": evidence_buffer}
+        except Exception as e:
+            logger.error(f"Evidence framing failed: {e}")
             return {}
     
     def _assess_credibility_node(self, state: GraphState) -> GraphState:

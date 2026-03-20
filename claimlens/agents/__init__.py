@@ -5,6 +5,8 @@ from .search_architect import SearchArchitectAgent
 from .scraper import ScraperAgent
 from .verifier import VerifierAgent
 from .credibility import CredibilityAgent
+from .context import ContextAgent
+from .event_frame import EventFrameAgent
 
 __all__ = [
     "DecompositionAgent",
@@ -12,4 +14,6 @@ __all__ = [
     "ScraperAgent",
     "VerifierAgent",
     "CredibilityAgent",
+    "ContextAgent",
+    "EventFrameAgent",
 ]

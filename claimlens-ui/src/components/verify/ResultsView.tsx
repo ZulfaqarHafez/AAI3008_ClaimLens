@@ -33,6 +33,25 @@ interface Props {
   onReset: () => void;
 }
 
+function computeEvidenceStrength(evidenceList: VerificationResult["evidence_list"]) {
+  if (!evidenceList || evidenceList.length === 0) return 0.2;
+  const avgRel =
+    evidenceList.reduce((sum, e) => sum + (e.relevance_score ?? 0), 0) /
+    evidenceList.length;
+  const avgCred =
+    evidenceList.reduce((sum, e) => sum + (e.credibility_score ?? 0.5), 0) /
+    evidenceList.length;
+  const coverage = Math.min(1, evidenceList.length / 3);
+  const signal = 0.6 * avgRel + 0.4 * avgCred;
+  return Math.max(0.2, Math.min(1, signal * coverage));
+}
+
+function computeClaimPct(result: VerificationResult) {
+  const strength = computeEvidenceStrength(result.evidence_list);
+  const score = 0.7 * result.confidence + 0.3 * strength;
+  return Math.round(score * 100);
+}
+
 export default function ResultsView({ report, onReset }: Props) {
   const trustPct = Math.round(report.overall_trust_score * 100);
   const trustColor =
@@ -68,6 +87,16 @@ export default function ResultsView({ report, onReset }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Original Text */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <p className="text-sm font-semibold uppercase tracking-wider text-gray-400">
+          Original Text
+        </p>
+        <p className="mt-2 whitespace-pre-line text-sm text-gray-700">
+          {report.original_text}
+        </p>
+      </div>
+
       {/* Trust score banner */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
@@ -166,7 +195,7 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
   const [open, setOpen] = useState(false);
   const v = VERDICT_CONFIG[result.verdict as Verdict] ?? VERDICT_CONFIG.NOT_ENOUGH_INFO;
   const Icon = v.icon;
-  const confPct = Math.round(result.confidence * 100);
+  const claimPct = computeClaimPct(result);
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -187,9 +216,10 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
             </span>
             {/* Confidence bar */}
             <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-100">
-              <div className={`h-full rounded-full ${v.bar}`} style={{ width: `${confPct}%` }} />
+              <div className={`h-full rounded-full ${v.bar}`} style={{ width: `${claimPct}%` }} />
             </div>
-            <span className="text-xs font-semibold text-gray-500">{confPct}%</span>
+            <span className="text-xs font-semibold text-gray-500">{claimPct}%</span>
+            <span className="text-[10px] uppercase tracking-wider text-gray-400">Claim Score</span>
           </div>
         </div>
         <div className="mt-1">
@@ -209,6 +239,53 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
               <span className="font-semibold text-gray-800">Reasoning: </span>
               {result.reasoning}
             </p>
+          )}
+          {result.claim.context && (
+            <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                Context
+              </p>
+              <div className="space-y-1 text-xs text-gray-600">
+                {result.claim.context.normalized_claim && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Normalized: </span>
+                    {result.claim.context.normalized_claim}
+                  </p>
+                )}
+                {result.claim.context.context_summary && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Summary: </span>
+                    {result.claim.context.context_summary}
+                  </p>
+                )}
+                {result.claim.context.temporal_context && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Time: </span>
+                    {result.claim.context.temporal_context}
+                  </p>
+                )}
+                {result.claim.context.venue_context && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Venue: </span>
+                    {result.claim.context.venue_context}
+                  </p>
+                )}
+                {result.claim.context.entity_aliases &&
+                  result.claim.context.entity_aliases.length > 0 && (
+                    <p>
+                      <span className="font-semibold text-gray-700">Aliases: </span>
+                      {result.claim.context.entity_aliases.join(", ")}
+                    </p>
+                  )}
+                {result.claim.context.search_hints &&
+                  result.claim.context.search_hints.length > 0 && (
+                    <p>
+                      <span className="font-semibold text-gray-700">Search hints: </span>
+                      {result.claim.context.search_hints.join(", ")}
+                    </p>
+                  )}
+              </div>
+            </div>
           )}
           {result.evidence_list.length > 0 ? (
             <div className="space-y-3">

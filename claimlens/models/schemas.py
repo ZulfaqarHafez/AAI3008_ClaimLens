@@ -7,6 +7,16 @@ from datetime import datetime
 import uuid
 
 
+class EventFrame(BaseModel):
+    """Structured representation of an event for matching claims to evidence."""
+
+    person: Optional[str] = Field(default=None, description="Who performed the action")
+    action: Optional[str] = Field(default=None, description="What happened")
+    location: Optional[str] = Field(default=None, description="Where it happened")
+    time: Optional[str] = Field(default=None, description="When it happened")
+    context: Optional[str] = Field(default=None, description="Broader context or setting")
+
+
 class ClaimStatus(str, Enum):
     """Status of a claim in the verification pipeline."""
     PENDING = "pending"
@@ -23,6 +33,51 @@ class Verdict(str, Enum):
     NOT_ENOUGH_INFO = "NOT_ENOUGH_INFO"
 
 
+class ClaimContext(BaseModel):
+    """Contextual enrichment for a claim to improve search and verification."""
+    
+    normalized_claim: str = Field(
+        ...,
+        description="Normalized version of the claim with clarified entities or venues"
+    )
+    context_summary: str = Field(
+        ...,
+        description="Short contextual summary that may help interpret the claim"
+    )
+    temporal_context: Optional[str] = Field(
+        default=None,
+        description="Temporal context if explicitly stated or inferable without guessing"
+    )
+    venue_context: Optional[str] = Field(
+        default=None,
+        description="Venue or institutional context (e.g., a debate held in Parliament)"
+    )
+    entity_aliases: List[str] = Field(
+        default_factory=list,
+        description="Alternative names or titles for key entities"
+    )
+    search_hints: List[str] = Field(
+        default_factory=list,
+        description="Search hints or related phrases to improve evidence retrieval"
+    )
+    event_frame: Optional["EventFrame"] = Field(
+        default=None,
+        description="Structured event frame for matching evidence to the claim"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "normalized_claim": "Gan Kim Yong spoke in the Parliament of Singapore on March 2.",
+                "context_summary": "Committee of Supply debates are held in the Parliament of Singapore.",
+                "temporal_context": "March 2 (year not specified)",
+                "venue_context": "Parliament of Singapore",
+                "entity_aliases": ["Gan Kim Yong", "Deputy Prime Minister", "Minister for Trade and Industry"],
+                "search_hints": ["Committee of Supply debate Parliament Singapore", "Gan Kim Yong March 2 speech"]
+            }
+        }
+
+
 class Claim(BaseModel):
     """Represents an atomic, verifiable claim extracted from text."""
     
@@ -30,6 +85,10 @@ class Claim(BaseModel):
     text: str = Field(..., description="The atomic claim text")
     source_sentence: str = Field(..., description="Original sentence the claim was extracted from")
     status: ClaimStatus = Field(default=ClaimStatus.PENDING, description="Current verification status")
+    context: Optional[ClaimContext] = Field(
+        default=None,
+        description="Contextual enrichment for the claim"
+    )
     
     class Config:
         json_schema_extra = {
@@ -37,7 +96,15 @@ class Claim(BaseModel):
                 "id": "claim-001",
                 "text": "The Eiffel Tower is 330 meters tall.",
                 "source_sentence": "The Eiffel Tower, standing at 330 meters, is one of the most visited monuments.",
-                "status": "pending"
+                "status": "pending",
+                "context": {
+                    "normalized_claim": "The Eiffel Tower is 330 meters tall.",
+                    "context_summary": "The Eiffel Tower is a landmark in Paris.",
+                    "temporal_context": None,
+                    "venue_context": "Paris, France",
+                    "entity_aliases": ["Eiffel Tower", "Tour Eiffel"],
+                    "search_hints": ["Eiffel Tower height 330 meters"]
+                }
             }
         }
 
@@ -63,6 +130,10 @@ class Evidence(BaseModel):
         ge=0.0,
         le=1.0,
         description="Credibility score from AI assessment (0.0-1.0)"
+    )
+    event_frame: Optional["EventFrame"] = Field(
+        default=None,
+        description="Structured event frame extracted from the evidence"
     )
     credibility_reasoning: Optional[str] = Field(
         default=None,
@@ -208,6 +279,11 @@ class FinalReport(BaseModel):
                 "summary": "2 claims verified: 2 supported, 0 refuted."
             }
         }
+
+
+# Pydantic forward refs
+ClaimContext.model_rebuild()
+Evidence.model_rebuild()
 
 
 class GraphState(BaseModel):
