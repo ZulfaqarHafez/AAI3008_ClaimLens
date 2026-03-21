@@ -81,7 +81,7 @@ const PIPELINE_STEPS: {
 const NODE_TO_STEP: Record<string, PipelineNode> = {
   decompose_claims: "decompose_claims",
   assess_context: "assess_context",
-  prepare_claim: "generate_queries",
+  prepare_claim: "assess_context",
   generate_queries: "generate_queries",
   search_evidence: "search_evidence",
   assess_credibility: "assess_credibility",
