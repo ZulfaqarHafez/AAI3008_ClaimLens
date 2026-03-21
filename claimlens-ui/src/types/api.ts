@@ -88,6 +88,7 @@ export interface CompleteData {
 export type PipelineNode =
   | "decompose_claims"
   | "prepare_claim"
+  | "assess_context"
   | "generate_queries"
   | "search_evidence"
   | "assess_credibility"

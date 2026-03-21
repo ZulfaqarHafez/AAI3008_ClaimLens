@@ -118,6 +118,67 @@ Generate queries that will help find evidence to support OR refute this claim.""
             logger.error(f"Query generation failed: {e}")
             # Fallback: generate simple queries from claim text
             return self._fallback_queries(claim)
+        
+    def generate_queries_with_context(
+        self,
+        claim: Claim,
+        context_string: str = "",
+        enriched_text: str = "",
+        num_queries: int = 3,
+    ) -> List[str]:
+        """Generate queries using context-enriched claim text.
+
+        Args:
+            claim: The original claim
+            context_string: Formatted context notes from ContextAgent
+            enriched_text: Rewritten self-contained claim from ContextAgent
+            num_queries: Number of queries to generate
+
+        Returns:
+            List of search query strings
+        """
+        # Use enriched text if available and meaningfully different
+        effective_text = enriched_text if enriched_text and enriched_text != claim.text else claim.text
+
+        context_section = f"\n\n{context_string}" if context_string else ""
+
+        user_prompt = (
+            f"Generate {num_queries} diverse search queries to verify this claim:\n\n"
+            f"CLAIM: \"{effective_text}\"\n\n"
+            f"ORIGINAL CLAIM (if rewritten above): \"{claim.text}\""
+            f"{context_section}\n\n"
+            "Use the background context to write more specific, informed queries. "
+            "Expand acronyms, use full institution names, and include relevant event names."
+        )
+
+        try:
+            response_schema = {
+                "type": "object",
+                "properties": {
+                    "queries": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 2,
+                        "maxItems": 5,
+                    }
+                },
+                "required": ["queries"],
+            }
+
+            result = self.llm_service.generate_structured(
+                system_prompt=self.SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                response_schema=response_schema,
+                temperature=0.3,
+            )
+
+            queries = result.get("queries", [])[:num_queries]
+            logger.info(f"Generated {len(queries)} context-aware queries")
+            return queries
+
+        except Exception as e:
+            logger.error(f"Context-aware query generation failed: {e}")
+            return self._fallback_queries(claim)
     
     def _fallback_queries(self, claim: Claim) -> List[str]:
         """Generate simple fallback queries if LLM fails.

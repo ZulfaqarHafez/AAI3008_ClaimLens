@@ -20,6 +20,7 @@ from ..agents.search_architect import SearchArchitectAgent
 from ..agents.scraper import ScraperAgent
 from ..agents.verifier import VerifierAgent
 from ..agents.credibility import CredibilityAgent
+from ..agents.context import ContextAgent, ClaimContext 
 from ..services.llm_service import LLMService
 from ..config import settings
 
@@ -40,6 +41,8 @@ class GraphState(TypedDict, total=False):
     error: Optional[str]
     start_time: float
     _current_result: Optional[VerificationResult]
+    claim_contexts: Dict[str, dict] # claim_id -> ClaimContext.to_dict()
+
 
 
 def create_initial_state(text: str) -> dict:
@@ -56,6 +59,7 @@ def create_initial_state(text: str) -> dict:
         "error": None,
         "start_time": time.time(),
         "_current_result": None,
+        "claim_contexts": {},
     }
 
 
@@ -73,7 +77,8 @@ class ClaimLensGraph:
         search_architect: Optional[SearchArchitectAgent] = None,
         scraper_agent: Optional[ScraperAgent] = None,
         verifier_agent: Optional[VerifierAgent] = None,
-        credibility_agent: Optional[CredibilityAgent] = None
+        credibility_agent: Optional[CredibilityAgent] = None,
+        context_agent: Optional[ContextAgent] = None,
     ):
         """Initialize the orchestrator with agents.
 
@@ -93,6 +98,7 @@ class ClaimLensGraph:
         self.scraper_agent = scraper_agent or ScraperAgent(llm_service=self.llm_service)
         self.verifier_agent = verifier_agent or VerifierAgent(llm_service=self.llm_service)
         self.credibility_agent = credibility_agent or CredibilityAgent(self.llm_service)
+        self.context_agent = context_agent or ContextAgent(llm_service=self.llm_service)
         
         # Build the graph
         self.graph = self._build_graph()
@@ -112,6 +118,7 @@ class ClaimLensGraph:
         # Add nodes
         graph.add_node("decompose_claims", self._decompose_claims_node)
         graph.add_node("prepare_claim", self._prepare_claim_node)
+        graph.add_node("assess_context", self._assess_context_node)
         graph.add_node("generate_queries", self._generate_queries_node)
         graph.add_node("search_evidence", self._search_evidence_node)
         graph.add_node("assess_credibility", self._assess_credibility_node)
@@ -134,8 +141,11 @@ class ClaimLensGraph:
             }
         )
 
-        # prepare_claim -> generate_queries
-        graph.add_edge("prepare_claim", "generate_queries")
+        # prepare_claim -> assess_context
+        graph.add_edge("prepare_claim", "assess_context")
+
+        # assess_context -> generate_queries
+        graph.add_edge("assess_context", "generate_queries")
 
         # generate_queries -> search_evidence
         graph.add_edge("generate_queries", "search_evidence")
@@ -175,6 +185,63 @@ class ClaimLensGraph:
         return graph
     
     # ==================== Node Functions ====================
+
+    def _assess_context_node(self, state: GraphState) -> GraphState:
+        """Enrich the current claim with contextual background knowledge.
+
+        Runs ONCE per claim, immediately after prepare_claim and before
+        query generation. On retry iterations (iteration_count > 0) this
+        node is skipped — context was already gathered.
+
+        Args:
+            state: Current graph state
+
+        Returns:
+            Updated state with ClaimContext stored in claim_contexts
+        """
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+        current_claim = claims[current_index]
+
+        # Skip if we already have context for this claim (retry iteration)
+        existing_contexts = state.get("claim_contexts", {})
+        if current_claim.id in existing_contexts:
+            logger.debug(
+                f"Context already exists for claim '{current_claim.text[:50]}', skipping."
+            )
+            return {}
+
+        logger.info(
+            f"Assessing context for claim {current_index + 1}/{len(claims)}: "
+            f"'{current_claim.text[:60]}...'"
+        )
+
+        try:
+            claim_ctx = self.context_agent.enrich(current_claim)
+
+            # Store serialised context in state (TypedDict requires JSON-safe values)
+            updated_contexts = {
+                **existing_contexts,
+                current_claim.id: claim_ctx.to_dict(),
+            }
+
+            if claim_ctx.notes:
+                logger.info(
+                    f"Context enrichment found {len(claim_ctx.notes)} note(s): "
+                    + ", ".join(n.entity for n in claim_ctx.notes)
+                )
+                if claim_ctx.context_summary:
+                    logger.info(f"Context summary: {claim_ctx.context_summary}")
+            else:
+                logger.info("No additional context needed for this claim.")
+
+            return {"claim_contexts": updated_contexts}
+
+        except Exception as e:
+            logger.error(f"Context assessment failed: {e}")
+            # Non-fatal — continue without context
+            return {}
+
     
     def _decompose_claims_node(self, state: GraphState) -> GraphState:
         """Decompose input text into atomic claims.
@@ -235,51 +302,64 @@ class ClaimLensGraph:
     
     def _generate_queries_node(self, state: GraphState) -> GraphState:
         """Generate search queries for the current claim.
-        
-        Args:
-            state: Current graph state
-            
-        Returns:
-            Updated state with search queries
+
+        Now context-aware: injects ClaimContext notes into the query
+        generation prompt so the Search Architect understands implicit
+        entities and background.
         """
         claims = state["claims"]
         current_index = state["current_claim_index"]
         current_claim = claims[current_index]
-        
+
         try:
-            # Check if this is a retry (need refined queries)
             iteration = state["iteration_counts"].get(current_claim.id, 0)
             existing_queries = state["search_queries"].get(current_claim.id, [])
-            
+
+            # ── Pull context notes ──────────────────────────────────────────
+            claim_contexts = state.get("claim_contexts", {})
+            ctx_dict = claim_contexts.get(current_claim.id)
+            context_string = ""
+            enriched_text = current_claim.text
+
+            if ctx_dict:
+                notes = ctx_dict.get("notes", [])
+                if notes:
+                    lines = ["[Background Context]"]
+                    for n in notes:
+                        lines.append(f"- {n['entity']}: {n['note']}")
+                    context_string = "\n".join(lines)
+                enriched_text = ctx_dict.get("enriched_claim_text") or current_claim.text
+            # ───────────────────────────────────────────────────────────────
+
             if iteration > 0 and existing_queries:
-                # Generate refined queries based on previous results
                 evidence_gap = "Need more relevant evidence for verification"
                 queries = self.search_architect.generate_refined_queries(
                     current_claim,
                     existing_queries,
-                    evidence_gap
+                    evidence_gap,
                 )
             else:
-                # Generate initial queries
-                queries = self.search_architect.generate_queries(current_claim)
-            
-            # Update queries in state
+                queries = self.search_architect.generate_queries_with_context(
+                    current_claim,
+                    context_string=context_string,
+                    enriched_text=enriched_text,
+                )
+
             all_queries = existing_queries + queries
             search_queries = {**state["search_queries"], current_claim.id: all_queries}
-            
-            # Increment iteration count
+
             iteration_counts = {
                 **state["iteration_counts"],
-                current_claim.id: iteration + 1
+                current_claim.id: iteration + 1,
             }
-            
-            logger.debug(f"Generated {len(queries)} queries for claim")
-            
+
+            logger.debug(f"Generated {len(queries)} queries for claim (context-aware)")
+
             return {
                 "search_queries": search_queries,
-                "iteration_counts": iteration_counts
+                "iteration_counts": iteration_counts,
             }
-            
+
         except Exception as e:
             logger.error(f"Query generation failed: {e}")
             return {}
@@ -384,51 +464,50 @@ class ClaimLensGraph:
 
     def _verify_claim_node(self, state: GraphState) -> GraphState:
         """Verify the current claim against collected evidence.
-        
-        Args:
-            state: Current graph state
-            
-        Returns:
-            Updated state with verification result
+
+        Now passes context notes to the verifier so reasoning can
+        reference institutional/event background.
         """
         claims = state["claims"]
         current_index = state["current_claim_index"]
         current_claim = claims[current_index]
-        
+
         try:
             current_claim.status = ClaimStatus.VERIFYING
-            
-            # Get evidence for this claim
+
             evidence = state["evidence_buffer"].get(current_claim.id, [])
             iteration = state["iteration_counts"].get(current_claim.id, 1)
-            
-            # Verify the claim
-            result = self.verifier_agent.verify_with_retry(
+
+            # Attach context summary to claim text for verifier reasoning
+            claim_contexts = state.get("claim_contexts", {})
+            ctx_dict = claim_contexts.get(current_claim.id)
+            context_hint = ""
+            enriched_claim_text = ""
+
+            if ctx_dict:
+                context_hint = ctx_dict.get("context_summary", "")
+                enriched_claim_text = ctx_dict.get("enriched_claim_text", "")
+
+            result = self.verifier_agent.verify_with_context(
                 current_claim,
                 evidence,
-                iteration
+                iteration,
+                context_hint=context_hint,
+                enriched_claim_text=enriched_claim_text, 
             )
-            
-            # Store result temporarily; finalize_claim will persist it
-            return {
-                "_current_result": result
-            }
-            
+
+            return {"_current_result": result}
+
         except Exception as e:
             logger.error(f"Verification failed: {e}")
-            
-            # Create a failure result
             result = VerificationResult(
                 claim=current_claim,
                 evidence_list=[],
                 verdict=Verdict.NOT_ENOUGH_INFO,
                 confidence=0.0,
-                reasoning=f"Verification error: {str(e)}"
+                reasoning=f"Verification error: {str(e)}",
             )
-            
-            return {
-                "_current_result": result
-            }
+            return {"_current_result": result}
     
     def _aggregate_results_node(self, state: GraphState) -> GraphState:
         """Aggregate all verification results.

@@ -117,6 +117,41 @@ class VerifierAgent:
         result.iterations_used = iteration
         return result
     
+    def verify_with_context(
+        self,
+        claim: Claim,
+        evidence: List[Evidence],
+        iteration: int = 1,
+        context_hint: str = "",
+        enriched_claim_text: str = ""
+    ) -> VerificationResult:
+        """Verify with an optional context hint prepended to reasoning.
+
+        For NLI-based verifiers (DeBERTa), the context_hint is appended
+        to the reasoning string post-hoc. For LLM-based verifiers it can
+        be injected into the prompt.
+
+        Args:
+            claim: The claim to verify
+            evidence: Evidence list
+            iteration: Current iteration number
+            context_hint: Context summary from ContextAgent
+
+        Returns:
+            VerificationResult, reasoning enriched with context
+        """
+        from ..models.nli_placeholder import ClaimLensVerifier
+        if isinstance(self.verifier, ClaimLensVerifier) and enriched_claim_text:
+            result = self.verifier.verify(claim, evidence, enriched_claim_text=enriched_claim_text)
+            result.iterations_used = iteration
+        else:
+            result = self.verify_with_retry(claim, evidence, iteration)
+
+        if context_hint and result.reasoning:
+            result.reasoning = f"[Context: {context_hint}] {result.reasoning}"
+
+        return result
+
     def should_continue_searching(
         self,
         result: VerificationResult,

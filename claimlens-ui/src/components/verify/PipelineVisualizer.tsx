@@ -12,6 +12,7 @@ import {
   Loader2,
   Circle,
   ArrowRight,
+  BookOpen,
 } from "lucide-react";
 import type { PipelineNode } from "@/types/api";
 
@@ -31,6 +32,12 @@ const PIPELINE_STEPS: {
     label: "Decompose",
     icon: FileText,
     description: "Breaking text into claims",
+  },
+  {
+    node: "assess_context",
+    label: "Context",
+    icon: BookOpen,
+    description: "Gathering background context",
   },
   {
     node: "generate_queries",
@@ -73,7 +80,8 @@ const PIPELINE_STEPS: {
 // Map intermediate nodes to the visible step they belong to
 const NODE_TO_STEP: Record<string, PipelineNode> = {
   decompose_claims: "decompose_claims",
-  prepare_claim: "generate_queries",
+  assess_context: "assess_context",
+  prepare_claim: "assess_context",
   generate_queries: "generate_queries",
   search_evidence: "search_evidence",
   assess_credibility: "assess_credibility",
