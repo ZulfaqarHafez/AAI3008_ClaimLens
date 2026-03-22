@@ -89,6 +89,197 @@ npm run dev
 - Backend API docs: http://localhost:8000/docs
 - Frontend UI: http://localhost:3000
 
+## 🎯 How the App Works
+
+### User Flow
+
+ClaimLens is an **agentic fact-checking system** that uses multiple AI agents working together to verify claims automatically. Here's what happens when a user submits text:
+
+#### Step 1: Landing Page
+Users arrive at the landing page which explains the concept:
+- Displays hero section with key metrics (trust score breakdown)
+- Shows the architecture pipeline with visual flow of how claims are decomposed → searched → verified
+- Lists key features: atomic claim extraction, multi-evidence gathering, credibility scoring
+- Includes call-to-action to verify claims
+
+#### Step 2: User Submits Text
+User navigates to the Verify page and enters text they want fact-checked:
+
+```
+Input Example:
+"The Eiffel Tower is 330 meters tall and was built in 1889. It attracts over 7 million visitors annually."
+```
+
+The app validates that:
+- Text is not empty
+- Text is under 10,000 characters
+- No special filtering applied (all languages welcome)
+
+#### Step 3: Decomposition Agent
+The **Decomposition Agent** breaks the input into atomic, verifiable claims:
+
+```python
+# Agent: decomposition.py
+# Model: GPT-4o mini
+# Task: Extract atomic claims from unstructured text
+
+Input: "The Eiffel Tower is 330 meters tall and was built in 1889."
+
+Output Claims:
+├─ Claim 1: "The Eiffel Tower is 330 meters tall"
+├─ Claim 2: "The Eiffel Tower was built in 1889"
+└─ Metadata: source_sentence, claim_id, status (pending)
+```
+
+The agents ensures:
+- Each claim is independently verifiable
+- No compound claims (e.g., "X is true AND Y happened")
+- Claims retain original context via source_sentence reference
+
+#### Step 4: Search Architect Agent
+For each claim, the **Search Architect Agent** generates targeted search queries:
+
+```python
+# Agent: search_architect.py
+# Model: GPT-4o mini
+# Task: Generate search queries that will find relevant evidence
+
+For Claim: "The Eiffel Tower is 330 meters tall"
+
+Queries Generated:
+├─ Query 1: "Eiffel Tower height meters"
+├─ Query 2: "Eiffel Tower dimensions specifications"
+└─ Query 3: "Gustave Eiffel tower 330m"
+
+Reasoning: Multiple formulations increase chance of finding reliable sources
+```
+
+#### Step 5: Scraper Agent
+The **Scraper Agent** executes generated queries and retrieves web evidence:
+
+```python
+# Agent: scraper.py
+# Service: Tavily Web Search API
+# Task: Find and extract relevant evidence from web sources
+
+For Query: "Eiffel Tower height meters"
+
+Evidence Retrieved:
+├─ Source 1: Wikipedia - "The Eiffel Tower... 330 metres (1,083 ft) tall"
+├─ Source 2: ArchitectureToday - "Height: 330m with antenna"
+└─ Source 3: TouristGuide - "Standing at 330 meters, the Eiffel Tower..."
+
+Processing:
+- Removes duplicates
+- Filters irrelevant results
+- Keeps top 5 sources per query
+- Preserves source URL and relevance metadata
+```
+
+#### Step 6: Verification Agent (NLI Model)
+The **Verifier Agent** uses a fine-tuned NLI (Natural Language Inference) model to compare claims against evidence:
+
+```python
+# Model: ClaimLens DeBERTa-v3-NLI (fine-tuned)
+# Task: Determine if evidence supports, refutes, or is neutral toward claim
+
+Processing for Claim: "The Eiffel Tower is 330 meters tall"
+
+Evidence Analysis:
+├─ Evidence 1: "330 metres tall"
+│   └─ NLI Output: SUPPORTED (confidence: 0.94)
+│
+├─ Evidence 2: "330m with antenna"
+│   └─ NLI Output: SUPPORTED (confidence: 0.89)
+│
+└─ Evidence 3: "Standing at 330 meters"
+    └─ NLI Output: SUPPORTED (confidence: 0.92)
+
+Final Verdict Calculation:
+├─ Verdict: SUPPORTED
+├─ Confidence: 0.92 (weighted average)
+├─ Reasoning: "Multiple reliable sources confirm the Eiffel Tower height"
+└─ Iterations Used: 1 (high confidence found on first search)
+```
+
+#### Step 7: Real-time Progress Tracking
+As the pipeline runs, the frontend shows real-time progress:
+
+```
+Progress Display:
+├─ ⏳ Decomposing claims...     [ACTIVE]
+├─ ⏳ Generating search queries... [QUEUED]
+├─ ⏳ Gathering evidence...    [QUEUED]
+├─ ⏳ Verifying claims...      [QUEUED]
+└─ ⏳ Aggregating results...   [QUEUED]
+
+Per-Claim Tracking:
+├─ [✓] Claim 1: "The Eiffel Tower is 330 meters tall"
+├─ [⏳] Claim 2: "The Eiffel Tower was built in 1889"
+└─ [○] Claim 3: Not yet processed
+```
+
+#### Step 8: Final Report
+After all claims are verified, the user sees comprehensive results:
+
+```json
+{
+  "overall_trust_score": 0.88,
+  "summary": "88% of claims are supported by evidence. High confidence in provided information.",
+  "claims_breakdown": {
+    "supported": 2,
+    "refuted": 0,
+    "insufficient_info": 0
+  },
+  "verification_results": [
+    {
+      "claim": "The Eiffel Tower is 330 meters tall",
+      "verdict": "SUPPORTED",
+      "confidence": 0.92,
+      "evidence_count": 3,
+      "reasoning": "Multiple reliable sources confirm..."
+    },
+    {
+      "claim": "The Eiffel Tower was built in 1889",
+      "verdict": "SUPPORTED",
+      "confidence": 0.95,
+      "evidence_count": 5,
+      "reasoning": "All major historical sources confirm..."
+    }
+  ]
+}
+```
+
+### What Makes it Agentic
+
+ClaimLens isn't a simple API call—it's a **multi-agent system** orchestrated by LangGraph:
+
+1. **Independent Agents**: Each agent (decomposer, searcher, scraper, verifier) can make decisions autonomously
+2. **Stateful Orchestration**: LangGraph manages state transitions between agents, with conditional logic:
+   - If confidence is low → Generate more search queries and try again
+   - If max iterations reached → Return best confidence found
+   - If no claims extracted → Return empty report
+3. **Evidence-Based Reasoning**: The verifier doesn't just match keywords—it understands semantic relationships through NLI
+4. **Iterative Refinement**: The system can loop back to search_architect if initial verification confidence is below threshold (default 0.7)
+
+### Verdict Types
+
+The system returns one of three verdicts per claim:
+
+| Verdict | Meaning | Example |
+|---------|---------|---------|
+| **SUPPORTED** | Evidence confirms the claim | "Snow is white" + evidence → SUPPORTED |
+| **REFUTED** | Evidence contradicts the claim | "Snow is black" + evidence → REFUTED |
+| **NOT_ENOUGH_INFO** | Evidence is inconclusive | Ambiguous claim + vague evidence → NOT_ENOUGH_INFO |
+
+### Confidence Scoring
+
+Each verdict includes a confidence score (0-1):
+- **0.9+**: Very high confidence (multiple strong sources align)
+- **0.7-0.9**: High confidence (primary sources support)
+- **0.5-0.7**: Moderate confidence (some sources align, some ambiguous)
+- **<0.5**: Low confidence (contradictory evidence or unclear)
+
 ## 📁 Project Structure
 
 ```
