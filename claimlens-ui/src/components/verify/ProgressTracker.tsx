@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, CheckCircle2, XCircle, AlertCircle, Circle, Clock, ExternalLink, ChevronDown, ChevronUp, Shield } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Circle,
+  Clock,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Shield,
+} from "lucide-react";
 import type { ExtractedClaim, VerifiedClaim } from "@/hooks/useVerification";
 import type { PipelineNode } from "@/types/api";
 
@@ -12,18 +23,9 @@ const THINKING_MESSAGES: Record<string, string[]> = {
     "Separating facts from opinions...",
     "Extracting atomic statements...",
   ],
-  prepare_claim: [
-    "Preparing the next claim...",
-    "Setting up verification context...",
-  ],
-  enrich_context: [
-    "Adding helpful context...",
-    "Linking venues and titles...",
-  ],
-  frame_claim: [
-    "Structuring the claim event...",
-    "Extracting key dimensions...",
-  ],
+  prepare_claim: ["Preparing the next claim...", "Setting up verification context..."],
+  enrich_context: ["Adding helpful context...", "Linking venues and titles..."],
+  frame_claim: ["Structuring the claim event...", "Extracting key dimensions..."],
   generate_queries: [
     "Crafting search queries...",
     "Thinking about the best angles to verify this...",
@@ -35,10 +37,7 @@ const THINKING_MESSAGES: Record<string, string[]> = {
     "Gathering relevant articles...",
     "Retrieving and filtering results...",
   ],
-  frame_evidence: [
-    "Structuring evidence events...",
-    "Aligning evidence to claim context...",
-  ],
+  frame_evidence: ["Structuring evidence events...", "Aligning evidence to claim context..."],
   assess_credibility: [
     "Evaluating source credibility...",
     "Checking author expertise...",
@@ -51,10 +50,7 @@ const THINKING_MESSAGES: Record<string, string[]> = {
     "Analyzing textual entailment...",
     "Computing confidence scores...",
   ],
-  finalize_claim: [
-    "Recording the verdict...",
-    "Saving claim results...",
-  ],
+  finalize_claim: ["Recording the verdict...", "Saving claim results..."],
   aggregate_results: [
     "Combining all verdicts...",
     "Calculating trust score...",
@@ -70,8 +66,8 @@ const THINKING_MESSAGES: Record<string, string[]> = {
 function useElapsedTime() {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setElapsed((seconds) => seconds + 1), 1000);
+    return () => clearInterval(timer);
   }, []);
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
@@ -80,13 +76,12 @@ function useElapsedTime() {
 
 function useThinkingMessage(currentNode: PipelineNode | null) {
   const [index, setIndex] = useState(0);
+
   useEffect(() => {
-    setIndex(0);
+    const timer = setInterval(() => setIndex((i) => i + 1), 3000);
+    return () => clearInterval(timer);
   }, [currentNode]);
-  useEffect(() => {
-    const t = setInterval(() => setIndex((i) => i + 1), 3000);
-    return () => clearInterval(t);
-  }, [currentNode]);
+
   const messages = currentNode ? THINKING_MESSAGES[currentNode] || [] : [];
   if (messages.length === 0) return null;
   return messages[index % messages.length];
@@ -105,88 +100,113 @@ export default function ProgressTracker({ message, claims, verified, currentNode
   const thinkingMsg = useThinkingMessage(currentNode);
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      {/* Spinner + message + elapsed */}
-      <div className="mb-2 flex items-center justify-between">
+    <section className="panel rounded-[1.6rem] p-5 sm:p-6">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-          <p className="text-sm font-medium text-gray-700">{message}</p>
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--brand)]/14 text-[var(--brand-strong)]">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-[#1c3a43]">{message}</p>
+            {thinkingMsg && <p className="text-xs text-[#5d757d]">{thinkingMsg}</p>}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-[#cfd8d1] bg-[#f0f6f4] px-3 py-1 text-xs font-semibold text-[#3f6068]">
           <Clock className="h-3.5 w-3.5" />
           <span className="tabular-nums">{elapsed}</span>
         </div>
       </div>
 
-      {/* Thinking sub-message */}
-      {thinkingMsg && (
-        <p className="mb-4 ml-9 text-xs text-indigo-400 animate-pulse">{thinkingMsg}</p>
-      )}
-
-      {!thinkingMsg && <div className="mb-4" />}
-
-      {/* Claim list */}
       {claims.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <div className="mt-5 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5f777f]">
             Claims ({verified.length}/{claims.length})
           </p>
-          {claims.map((c) => {
-            const done = verifiedIds.has(c.id);
-            const match = verified.find((v) => v.claim_id === c.id);
+          {claims.map((claim) => {
+            const done = verifiedIds.has(claim.id);
+            const match = verified.find((v) => v.claim_id === claim.id);
             return (
-              <ProgressClaimCard key={c.id} claim={c} done={done} match={match} />
+              <ProgressClaimCard key={claim.id} claim={claim} done={done} match={match} />
             );
           })}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
 function verdictStyle(verdict: string) {
   switch (verdict) {
     case "SUPPORTED":
-      return { border: "border-emerald-200", bg: "bg-emerald-50/50", text: "text-emerald-600", badge: "bg-emerald-100 text-emerald-700", Icon: CheckCircle2 };
+      return {
+        border: "border-emerald-200",
+        bg: "bg-emerald-50/75",
+        text: "text-emerald-700",
+        badge: "bg-emerald-100 text-emerald-700",
+        Icon: CheckCircle2,
+      };
     case "REFUTED":
-      return { border: "border-red-200", bg: "bg-red-50/50", text: "text-red-600", badge: "bg-red-100 text-red-700", Icon: XCircle };
+      return {
+        border: "border-red-200",
+        bg: "bg-red-50/75",
+        text: "text-red-700",
+        badge: "bg-red-100 text-red-700",
+        Icon: XCircle,
+      };
     default:
-      return { border: "border-amber-200", bg: "bg-amber-50/50", text: "text-amber-600", badge: "bg-amber-100 text-amber-700", Icon: AlertCircle };
+      return {
+        border: "border-amber-200",
+        bg: "bg-amber-50/75",
+        text: "text-amber-700",
+        badge: "bg-amber-100 text-amber-700",
+        Icon: AlertCircle,
+      };
   }
 }
 
-function ProgressClaimCard({ claim, done, match }: { claim: ExtractedClaim; done: boolean; match?: VerifiedClaim }) {
+function ProgressClaimCard({
+  claim,
+  done,
+  match,
+}: {
+  claim: ExtractedClaim;
+  done: boolean;
+  match?: VerifiedClaim;
+}) {
   const [expanded, setExpanded] = useState(false);
   const style = match ? verdictStyle(match.verdict) : null;
   const hasEvidence = match?.evidence && match.evidence.length > 0;
 
   return (
-    <div
-      className={`rounded-lg border text-sm transition ${
-        done && style ? `${style.border} ${style.bg}` : "border-gray-100 bg-gray-50"
+    <article
+      className={`rounded-xl border text-sm transition ${
+        done && style ? `${style.border} ${style.bg}` : "border-[#d8d5c8] bg-[#f8f6ef]"
       }`}
     >
       <button
         onClick={() => done && hasEvidence && setExpanded(!expanded)}
-        className={`flex w-full items-start gap-3 px-4 py-3 text-left ${done && hasEvidence ? "cursor-pointer" : "cursor-default"}`}
+        className={`flex w-full items-start gap-3 px-4 py-3 text-left ${
+          done && hasEvidence ? "cursor-pointer" : "cursor-default"
+        }`}
       >
         {done && style ? (
           <style.Icon className={`mt-0.5 h-4 w-4 shrink-0 ${style.text}`} />
         ) : (
-          <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300" />
+          <Circle className="mt-0.5 h-4 w-4 shrink-0 text-[#9cb0b5]" />
         )}
+
         <div className="min-w-0 flex-1">
-          <p className={done ? "text-gray-700" : "text-gray-500"}>{claim.text}</p>
+          <p className={done ? "text-[#28444e]" : "text-[#617a81]"}>{claim.text}</p>
           {match && (
-            <div className="mt-1.5 flex items-center gap-2">
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${style?.badge}`}>
                 {match.verdict.replace(/_/g, " ")}
               </span>
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-[#5e777f]">
                 {Math.round(match.confidence * 100)}% confidence
               </span>
               {hasEvidence && (
-                <span className="flex items-center gap-1 text-xs text-gray-400">
+                <span className="flex items-center gap-1 text-xs text-[#5e777f]">
                   <Shield className="h-3 w-3" />
                   {match.evidence!.length} source{match.evidence!.length !== 1 ? "s" : ""}
                 </span>
@@ -194,59 +214,57 @@ function ProgressClaimCard({ claim, done, match }: { claim: ExtractedClaim; done
             </div>
           )}
         </div>
+
         {done && hasEvidence && (
           <div className="mt-1">
             {expanded ? (
-              <ChevronUp className="h-4 w-4 text-gray-400" />
+              <ChevronUp className="h-4 w-4 text-[#6f858b]" />
             ) : (
-              <ChevronDown className="h-4 w-4 text-gray-400" />
+              <ChevronDown className="h-4 w-4 text-[#6f858b]" />
             )}
           </div>
         )}
       </button>
 
-      {/* Expanded evidence section */}
       {expanded && match?.evidence && (
-        <div className="border-t border-gray-100 px-4 py-3 space-y-2">
+        <div className="space-y-2 border-t border-[#d8d5c8] px-4 py-3">
           {match.reasoning && (
-            <p className="text-xs text-gray-500 mb-2">
-              <span className="font-semibold text-gray-700">Reasoning: </span>
+            <p className="mb-1 text-xs text-[#4f666f]">
+              <span className="font-semibold text-[#28444e]">Reasoning: </span>
               {match.reasoning}
             </p>
           )}
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Sources
-          </p>
-          {match.evidence.map((e, j) => (
-            <div key={j} className="rounded-md border border-gray-100 bg-white p-2.5">
+          <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#5f777f]">Sources</p>
+
+          {match.evidence.map((evidence, j) => (
+            <div key={j} className="rounded-lg border border-[#d8d5c8] bg-white/85 p-2.5">
               <div className="flex items-start justify-between gap-2">
-                <p className="text-xs font-semibold text-gray-700 line-clamp-1">{e.title}</p>
+                <p className="line-clamp-1 text-xs font-semibold text-[#26414b]">{evidence.title}</p>
                 <a
-                  href={e.url}
+                  href={evidence.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 text-indigo-500 hover:text-indigo-700"
+                  className="shrink-0 text-[var(--brand)] hover:text-[var(--brand-strong)]"
                   onClick={(ev) => ev.stopPropagation()}
                 >
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
-              <p className="mt-1 text-xs text-gray-400 line-clamp-2">{e.snippet}</p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                {e.credibility_score != null && (
+
+              <p className="mt-1 line-clamp-2 text-xs text-[#617a81]">{evidence.snippet}</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[#60797f]">
+                {evidence.credibility_score != null && (
                   <span className="flex items-center gap-1">
                     <Shield className="h-3 w-3" />
-                    Credibility: {Math.round(e.credibility_score * 100)}%
+                    Credibility: {Math.round(evidence.credibility_score * 100)}%
                   </span>
                 )}
-                {e.source_quality && (
-                  <span>Quality: {e.source_quality}</span>
-                )}
+                {evidence.source_quality && <span>Quality: {evidence.source_quality}</span>}
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </article>
   );
 }

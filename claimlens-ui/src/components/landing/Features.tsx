@@ -1,71 +1,70 @@
 import { Brain, Globe, Zap, Lock, BarChart3, RefreshCw } from "lucide-react";
 
-const features = [
+const FEATURES = [
   {
     icon: Brain,
     title: "Fine-tuned DeBERTa NLI",
-    desc: "Custom model trained for 3-label natural language inference on fact-checking data.",
+    desc: "Custom verifier for 3-label natural language inference on claim-checking data.",
   },
   {
     icon: Globe,
     title: "Real-time Web Search",
-    desc: "Tavily-powered web searches retrieve fresh, relevant evidence for every claim.",
+    desc: "Tavily-powered retrieval gathers fresh evidence from multiple publication angles.",
   },
   {
     icon: Zap,
     title: "LangGraph Orchestration",
-    desc: "Agentic state machine coordinates decomposition, search, and verification.",
+    desc: "A deterministic state graph coordinates decomposition, retrieval, and verification.",
   },
   {
     icon: Lock,
-    title: "Secure & Private",
-    desc: "API-key auth, rate limiting, and sanitized errors keep your data safe.",
+    title: "Secure By Design",
+    desc: "Sanitized errors and robust API boundaries keep sensitive user input protected.",
   },
   {
     icon: BarChart3,
-    title: "Trust Score",
-    desc: "Weighted aggregate score reflecting overall text trustworthiness.",
+    title: "Trust Score Summary",
+    desc: "An aggregate trust metric combines verdict ratio, confidence, and evidence quality.",
   },
   {
     icon: RefreshCw,
-    title: "Iterative Verification",
-    desc: "Claims are re-searched if confidence is low, improving accuracy.",
+    title: "Iterative Search Loop",
+    desc: "Low-confidence claims trigger another evidence pass with refined search queries.",
   },
 ];
 
 export default function Features() {
   return (
-    <section id="features" className="bg-white py-24">
-      <div className="mx-auto max-w-7xl px-6">
-        <div className="text-center">
-          <p className="text-sm font-semibold uppercase tracking-wider text-indigo-600">
-            Features
-          </p>
-          <h2 className="mt-2 text-3xl font-bold text-gray-900 sm:text-4xl">
-            Built for reliable fact-checking
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-500">
-            Every piece of the pipeline is designed for accuracy, speed, and
-            transparency.
+    <section id="features" className="site-section py-24 sm:py-28">
+      <div className="site-shell">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="section-kicker">Features</p>
+          <h2 className="section-title mt-3">Engineered for trust, not just speed.</h2>
+          <p className="section-lead mt-4">
+            Every module is optimized for explainability and signal quality so results
+            stay auditable from claim to conclusion.
           </p>
         </div>
 
-        <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((f, i) => {
-            const Icon = f.icon;
+        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {FEATURES.map((feature, i) => {
+            const Icon = feature.icon;
+
             return (
-              <div
-                key={i}
-                className="rounded-2xl border border-gray-200 bg-gray-50 p-8 text-left transition hover:shadow-md"
+              <article
+                key={feature.title}
+                className="panel animated-rise group relative overflow-hidden rounded-[1.6rem] p-6"
+                style={{ animationDelay: `${i * 60}ms` }}
               >
-                <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100">
-                  <Icon className="h-7 w-7 text-indigo-600" />
+                <div className="pointer-events-none absolute -right-12 -top-12 h-28 w-28 rounded-full bg-[var(--brand)]/8 blur-2xl transition group-hover:bg-[var(--accent)]/14" />
+                <div className="relative">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand)]/12 text-[var(--brand-strong)]">
+                    <Icon className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-lg font-bold text-[#12303a]">{feature.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[#4f656d]">{feature.desc}</p>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-gray-500">
-                  {f.desc}
-                </p>
-              </div>
+              </article>
             );
           })}
         </div>
