@@ -263,18 +263,19 @@ class FinalReport(BaseModel):
         EVIDENCE_QUALITY_WEIGHT = 0.2
         
         # Calculate claim support ratio
+        total_claims = len(self.verification_results)
         supported_count = sum(
-            1 for r in self.verification_results 
+            1 for r in self.verification_results
             if r.verdict == Verdict.SUPPORTED
         )
         refuted_count = sum(
-            1 for r in self.verification_results 
+            1 for r in self.verification_results
             if r.verdict == Verdict.REFUTED
         )
-        total_claims = len(self.verification_results)
-        
-        # Penalize refuted claims more heavily
-        support_ratio = (supported_count - refuted_count * 0.5) / total_claims
+        nei_count = total_claims - supported_count - refuted_count
+
+        # NEI = neutral (0.5 credit), supported = 1.0, refuted = penalized
+        support_ratio = (supported_count + nei_count * 0.5 - refuted_count * 0.5) / total_claims
         support_ratio = max(0.0, min(1.0, support_ratio))
         
         # Calculate average confidence

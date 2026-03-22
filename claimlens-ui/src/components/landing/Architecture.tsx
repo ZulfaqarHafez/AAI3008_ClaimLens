@@ -253,6 +253,17 @@ export default function Architecture() {
                 <strong>Weighted voting:</strong> each evidence piece&apos;s NLI confidence is
                 weighted by its relevance score. The label with the highest weighted sum wins.
               </p>
+              <p className="mt-2 text-[11px] text-gray-500">
+                <strong>LLM cross-check:</strong> triggered when the NLI result is REFUTED with
+                high relevance, NEI with high relevance, or confidence &lt; 0.55. The LLM can
+                override the NLI verdict only if it disagrees AND its confidence ≥ 0.70 (capped
+                at 0.95).
+              </p>
+              <p className="mt-2 text-[11px] text-gray-500">
+                <strong>Confidence gates:</strong> event-frame mismatch, missing direct evidence
+                match, or lack of cross-source agreement (2+ sources) each cap confidence
+                at 0.40 and adjust the verdict to Not Enough Info.
+              </p>
             </Step>
 
             <Arrow />
@@ -276,12 +287,15 @@ export default function Architecture() {
               weighted formula:
             </p>
             <div className="mt-2 overflow-x-auto rounded-lg bg-indigo-50 px-3 py-2 font-mono text-[11px] text-indigo-800">
-              Trust = 0.5 × support_ratio + 0.3 × avg_confidence + 0.2 × evidence_quality
+              <p>support_ratio = (supported + NEI × 0.5 − refuted × 0.5) / total</p>
+              <p className="mt-1">Trust = 0.5 × support_ratio + 0.3 × avg_confidence + 0.2 × evidence_quality</p>
             </div>
             <p className="mt-2">
-              Refuted claims are penalised 0.5× in the support ratio. Evidence quality is
-              derived from the <strong>credibility scores</strong> produced by the
-              Credibility Agent (0.0–1.0 per source).
+              <strong>NEI claims are treated as neutral</strong> (0.5 credit) — they mean
+              &quot;couldn&apos;t verify&quot;, not &quot;wrong&quot;. Refuted claims are
+              penalised at −0.5. Evidence quality is derived from
+              the <strong>credibility scores</strong> produced by the Credibility Agent
+              (0.0–1.0 per source).
             </p>
           </Step>
 
