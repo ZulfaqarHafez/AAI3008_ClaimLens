@@ -123,16 +123,40 @@ class OpenAIVerifier(BaseVerifier):
         evidence_text = "\n\n".join([
             f"Source {i+1} ({e.url}):\n{e.snippet}" for i, e in enumerate(evidence)
         ])
+
+        system_prompt = """You are an expert fact-checker performing Natural Language Inference (NLI).
+Your task is to determine if the provided evidence SUPPORTS, REFUTES, or provides NOT_ENOUGH_INFO for the given claim.
+
+Rules:
+1. Verify the FULL EVENT described in the claim. Do not split into independent facts.
+2. The SAME EVENT must match across person, action, location/venue, time/date, and context.
+3. Use contextual reasoning for equivalent or hierarchical concepts.
+   Examples: "Committee of Supply debate" is part of Parliament; "DPM" means "Deputy Prime Minister";
+   speaking during a parliamentary debate means speaking in Parliament.
+4. If evidence confirms the event but uses different wording, treat it as SUPPORTING.
+5. If evidence contradicts any key dimension (person, date, location, or event), REFUTE.
+6. If evidence is incomplete or cannot confirm the full event, NOT_ENOUGH_INFO.
+7. Prefer authoritative sources in this order: government, major news, academic/institutional, other web, social.
+
+Respond with a JSON object containing:
+- verdict: "SUPPORTED", "REFUTED", or "NOT_ENOUGH_INFO"
+- confidence: A float between 0.0 and 1.0
+- reasoning: A brief explanation (1-2 sentences)"""
+
+        context_block = self._format_context_block(claim)
+
+        user_prompt = f"""Claim to verify:
+"{hypothesis}"
+{context_block}
+
+Evidence:
+{evidence_text}
+
+Analyze the evidence and provide your verdict."""
         try:
             result = self.llm_service.generate_structured(
-                system_prompt=(
-                    "You are an expert fact-checker. Determine if the evidence "
-                    "SUPPORTS, REFUTES, or provides NOT_ENOUGH_INFO for the claim. "
-                    "SUPPORTED: evidence confirms the claim. "
-                    "REFUTED: evidence directly contradicts the claim. "
-                    "NOT_ENOUGH_INFO: evidence is insufficient or irrelevant."
-                ),
-                user_prompt=f'Claim:\n"{hypothesis}"\n\nEvidence:\n{evidence_text}',
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 response_schema={
                     "type": "object",
                     "properties": {
@@ -159,6 +183,33 @@ class OpenAIVerifier(BaseVerifier):
 
     def batch_verify(self, claims_evidence):
         return [self.verify(c, e) for c, e in claims_evidence]
+
+    def _format_context_block(self, claim: Claim) -> str:
+        context = getattr(claim, "context", None)
+        if not context:
+            return ""
+
+        lines = []
+        if context.normalized_claim and context.normalized_claim != claim.text:
+            lines.append(f"Normalized claim: {context.normalized_claim}")
+        if context.enriched_claim_text and context.enriched_claim_text != claim.text:
+            lines.append(f"Enriched claim: {context.enriched_claim_text}")
+        if context.context_summary:
+            lines.append(f"Context summary: {context.context_summary}")
+        if context.temporal_context:
+            lines.append(f"Temporal context: {context.temporal_context}")
+        if context.venue_context:
+            lines.append(f"Venue context: {context.venue_context}")
+        if context.entity_aliases:
+            lines.append(f"Entity aliases: {', '.join(context.entity_aliases[:6])}")
+        if context.context_notes:
+            notes = "; ".join(f"{n.entity}: {n.note}" for n in context.context_notes[:6])
+            lines.append(f"Context notes: {notes}")
+
+        if not lines:
+            return ""
+
+        return "\nADDITIONAL CONTEXT:\n" + "\n".join(f"- {line}" for line in lines)
 
 
 # ---------------------------------------------------------------------------

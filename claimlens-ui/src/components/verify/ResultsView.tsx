@@ -78,6 +78,25 @@ interface Props {
   onReset: () => void;
 }
 
+function computeEvidenceStrength(evidenceList: VerificationResult["evidence_list"]) {
+  if (!evidenceList || evidenceList.length === 0) return 0.2;
+  const avgRel =
+    evidenceList.reduce((sum, e) => sum + (e.relevance_score ?? 0), 0) /
+    evidenceList.length;
+  const avgCred =
+    evidenceList.reduce((sum, e) => sum + (e.credibility_score ?? 0.5), 0) /
+    evidenceList.length;
+  const coverage = Math.min(1, evidenceList.length / 3);
+  const signal = 0.6 * avgRel + 0.4 * avgCred;
+  return Math.max(0.2, Math.min(1, signal * coverage));
+}
+
+function computeClaimPct(result: VerificationResult) {
+  const strength = computeEvidenceStrength(result.evidence_list);
+  const score = 0.7 * result.confidence + 0.3 * strength;
+  return Math.round(score * 100);
+}
+
 export default function ResultsView({ report, onReset }: Props) {
   const [showOriginal, setShowOriginal] = useState(false);
 
@@ -206,14 +225,14 @@ export default function ResultsView({ report, onReset }: Props) {
 
 function ResultCard({ result, index }: { result: VerificationResult; index: number }) {
   const [open, setOpen] = useState(false);
-  const v       = VERDICT_CONFIG[result.verdict as Verdict] ?? VERDICT_CONFIG.NOT_ENOUGH_INFO;
-  const Icon    = v.icon;
-  const confPct = Math.round(result.confidence * 100);
+  const v = VERDICT_CONFIG[result.verdict as Verdict] ?? VERDICT_CONFIG.NOT_ENOUGH_INFO;
+  const Icon = v.icon;
+  const claimPct = computeClaimPct(result);
 
   // Dynamic confidence bar colour
   const barColour =
-    confPct >= 80 ? "bg-emerald-500" :
-    confPct >= 55 ? "bg-amber-500"   : "bg-red-400";
+    claimPct >= 80 ? "bg-emerald-500" :
+    claimPct >= 55 ? "bg-amber-500"   : "bg-red-400";
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -235,15 +254,16 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${v.bg} ${v.text}`}>
               {v.label}
             </span>
-            {/* Dynamic confidence bar */}
+            {/* Claim score bar */}
             <div className="flex items-center gap-2">
               <div className="h-2 w-28 overflow-hidden rounded-full bg-gray-100">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${barColour}`}
-                  style={{ width: `${confPct}%` }}
+                  style={{ width: `${claimPct}%` }}
                 />
               </div>
-              <span className="text-xs font-semibold text-gray-500">{confPct}%</span>
+              <span className="text-xs font-semibold text-gray-500">{claimPct}%</span>
+              <span className="text-[10px] uppercase tracking-wider text-gray-400">Claim Score</span>
             </div>
           </div>
         </div>
@@ -264,7 +284,72 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
               {result.reasoning}
             </p>
           )}
-
+          {result.claim.context && (
+            <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                Context
+              </p>
+              <div className="space-y-1 text-xs text-gray-600">
+                {result.claim.context.normalized_claim && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Normalized: </span>
+                    {result.claim.context.normalized_claim}
+                  </p>
+                )}
+                {result.claim.context.enriched_claim_text && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Enriched: </span>
+                    {result.claim.context.enriched_claim_text}
+                  </p>
+                )}
+                {result.claim.context.context_summary && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Summary: </span>
+                    {result.claim.context.context_summary}
+                  </p>
+                )}
+                {result.claim.context.temporal_context && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Time: </span>
+                    {result.claim.context.temporal_context}
+                  </p>
+                )}
+                {result.claim.context.venue_context && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Venue: </span>
+                    {result.claim.context.venue_context}
+                  </p>
+                )}
+                {result.claim.context.entity_aliases &&
+                  result.claim.context.entity_aliases.length > 0 && (
+                    <p>
+                      <span className="font-semibold text-gray-700">Aliases: </span>
+                      {result.claim.context.entity_aliases.join(", ")}
+                    </p>
+                  )}
+                {result.claim.context.search_hints &&
+                  result.claim.context.search_hints.length > 0 && (
+                    <p>
+                      <span className="font-semibold text-gray-700">Search hints: </span>
+                      {result.claim.context.search_hints.join(", ")}
+                    </p>
+                  )}
+                {result.claim.context.context_notes &&
+                  result.claim.context.context_notes.length > 0 && (
+                    <div>
+                      <span className="font-semibold text-gray-700">Context notes: </span>
+                      <ul className="mt-1 list-disc pl-4 text-xs text-gray-600">
+                        {result.claim.context.context_notes.slice(0, 6).map((n, idx) => (
+                          <li key={idx}>
+                            <span className="font-semibold text-gray-700">{n.entity}:</span> {n.note}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+              </div>
+            </div>
+          )}
           {result.evidence_list.length > 0 ? (
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">

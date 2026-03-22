@@ -16,11 +16,12 @@ from ..models.schemas import (
     Verdict
 )
 from ..agents.decomposition import DecompositionAgent
+from ..agents.context import ContextAgent
 from ..agents.search_architect import SearchArchitectAgent
 from ..agents.scraper import ScraperAgent
 from ..agents.verifier import VerifierAgent
 from ..agents.credibility import CredibilityAgent
-from ..agents.context import ContextAgent, ClaimContext 
+from ..agents.event_frame import EventFrameAgent
 from ..services.llm_service import LLMService
 from ..config import settings
 
@@ -41,10 +42,6 @@ class GraphState(TypedDict, total=False):
     error: Optional[str]
     start_time: float
     _current_result: Optional[VerificationResult]
-    claim_contexts: Dict[str, dict] # claim_id -> ClaimContext.to_dict()
-
-
-
 def create_initial_state(text: str) -> dict:
     """Create the initial state for a verification run."""
     return {
@@ -59,7 +56,6 @@ def create_initial_state(text: str) -> dict:
         "error": None,
         "start_time": time.time(),
         "_current_result": None,
-        "claim_contexts": {},
     }
 
 
@@ -77,18 +73,21 @@ class ClaimLensGraph:
         search_architect: Optional[SearchArchitectAgent] = None,
         scraper_agent: Optional[ScraperAgent] = None,
         verifier_agent: Optional[VerifierAgent] = None,
-        credibility_agent: Optional[CredibilityAgent] = None,
         context_agent: Optional[ContextAgent] = None,
+        credibility_agent: Optional[CredibilityAgent] = None,
+        event_frame_agent: Optional[EventFrameAgent] = None
     ):
         """Initialize the orchestrator with agents.
 
         Args:
             llm_service: Shared LLM service instance
             decomposition_agent: Custom decomposition agent
+            context_agent: Custom context agent
             search_architect: Custom search architect agent
             scraper_agent: Custom scraper agent
             verifier_agent: Custom verifier agent
             credibility_agent: Custom credibility agent
+            event_frame_agent: Custom event frame agent
         """
         self.llm_service = llm_service or LLMService()
 
@@ -98,7 +97,8 @@ class ClaimLensGraph:
         self.scraper_agent = scraper_agent or ScraperAgent(llm_service=self.llm_service)
         self.verifier_agent = verifier_agent or VerifierAgent(llm_service=self.llm_service)
         self.credibility_agent = credibility_agent or CredibilityAgent(self.llm_service)
-        self.context_agent = context_agent or ContextAgent(llm_service=self.llm_service)
+        self.context_agent = context_agent or ContextAgent(self.llm_service)
+        self.event_frame_agent = event_frame_agent or EventFrameAgent(self.llm_service)
         
         # Build the graph
         self.graph = self._build_graph()
@@ -118,9 +118,11 @@ class ClaimLensGraph:
         # Add nodes
         graph.add_node("decompose_claims", self._decompose_claims_node)
         graph.add_node("prepare_claim", self._prepare_claim_node)
-        graph.add_node("assess_context", self._assess_context_node)
+        graph.add_node("enrich_context", self._enrich_context_node)
+        graph.add_node("frame_claim", self._frame_claim_node)
         graph.add_node("generate_queries", self._generate_queries_node)
         graph.add_node("search_evidence", self._search_evidence_node)
+        graph.add_node("frame_evidence", self._frame_evidence_node)
         graph.add_node("assess_credibility", self._assess_credibility_node)
         graph.add_node("verify_claim", self._verify_claim_node)
         graph.add_node("finalize_claim", self._finalize_claim_node)
@@ -141,17 +143,17 @@ class ClaimLensGraph:
             }
         )
 
-        # prepare_claim -> assess_context
-        graph.add_edge("prepare_claim", "assess_context")
-
-        # assess_context -> generate_queries
-        graph.add_edge("assess_context", "generate_queries")
+        # prepare_claim -> enrich_context -> frame_claim -> generate_queries
+        graph.add_edge("prepare_claim", "enrich_context")
+        graph.add_edge("enrich_context", "frame_claim")
+        graph.add_edge("frame_claim", "generate_queries")
 
         # generate_queries -> search_evidence
         graph.add_edge("generate_queries", "search_evidence")
 
-        # search_evidence -> assess_credibility
-        graph.add_edge("search_evidence", "assess_credibility")
+        # search_evidence -> frame_evidence -> assess_credibility
+        graph.add_edge("search_evidence", "frame_evidence")
+        graph.add_edge("frame_evidence", "assess_credibility")
 
         # assess_credibility -> verify_claim
         graph.add_edge("assess_credibility", "verify_claim")
@@ -185,62 +187,6 @@ class ClaimLensGraph:
         return graph
     
     # ==================== Node Functions ====================
-
-    def _assess_context_node(self, state: GraphState) -> GraphState:
-        """Enrich the current claim with contextual background knowledge.
-
-        Runs ONCE per claim, immediately after prepare_claim and before
-        query generation. On retry iterations (iteration_count > 0) this
-        node is skipped — context was already gathered.
-
-        Args:
-            state: Current graph state
-
-        Returns:
-            Updated state with ClaimContext stored in claim_contexts
-        """
-        claims = state["claims"]
-        current_index = state["current_claim_index"]
-        current_claim = claims[current_index]
-
-        # Skip if we already have context for this claim (retry iteration)
-        existing_contexts = state.get("claim_contexts", {})
-        if current_claim.id in existing_contexts:
-            logger.debug(
-                f"Context already exists for claim '{current_claim.text[:50]}', skipping."
-            )
-            return {}
-
-        logger.info(
-            f"Assessing context for claim {current_index + 1}/{len(claims)}: "
-            f"'{current_claim.text[:60]}...'"
-        )
-
-        try:
-            claim_ctx = self.context_agent.enrich(current_claim)
-
-            # Store serialised context in state (TypedDict requires JSON-safe values)
-            updated_contexts = {
-                **existing_contexts,
-                current_claim.id: claim_ctx.to_dict(),
-            }
-
-            if claim_ctx.notes:
-                logger.info(
-                    f"Context enrichment found {len(claim_ctx.notes)} note(s): "
-                    + ", ".join(n.entity for n in claim_ctx.notes)
-                )
-                if claim_ctx.context_summary:
-                    logger.info(f"Context summary: {claim_ctx.context_summary}")
-            else:
-                logger.info("No additional context needed for this claim.")
-
-            return {"claim_contexts": updated_contexts}
-
-        except Exception as e:
-            logger.error(f"Context assessment failed: {e}")
-            # Non-fatal — continue without context
-            return {}
 
     
     def _decompose_claims_node(self, state: GraphState) -> GraphState:
@@ -299,14 +245,59 @@ class ClaimLensGraph:
             )
         
         return {}
+
+    def _enrich_context_node(self, state: GraphState) -> GraphState:
+        """Enrich the current claim with contextual information.
+        
+        Args:
+            state: Current graph state
+            
+        Returns:
+            Updated state (claims mutated in place with context)
+        """
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+        
+        if current_index >= len(claims):
+            return {}
+
+        current_claim = claims[current_index]
+
+        if current_claim.context is not None:
+            return {}
+
+        try:
+            current_claim.context = self.context_agent.enrich(current_claim)
+            logger.debug(
+                "Context enriched for claim: %s",
+                current_claim.text[:50]
+            )
+        except Exception as e:
+            logger.error(f"Context enrichment failed: {e}")
+        
+        return {}
+
+    def _frame_claim_node(self, state: GraphState) -> GraphState:
+        """Extract an event frame for the current claim."""
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+
+        if current_index >= len(claims):
+            return {}
+
+        current_claim = claims[current_index]
+
+        try:
+            frame = self.event_frame_agent.frame_claim(current_claim)
+            if current_claim.context:
+                current_claim.context.event_frame = frame
+        except Exception as e:
+            logger.error(f"Claim framing failed: {e}")
+
+        return {}
     
     def _generate_queries_node(self, state: GraphState) -> GraphState:
-        """Generate search queries for the current claim.
-
-        Now context-aware: injects ClaimContext notes into the query
-        generation prompt so the Search Architect understands implicit
-        entities and background.
-        """
+        """Generate search queries for the current claim."""
         claims = state["claims"]
         current_index = state["current_claim_index"]
         current_claim = claims[current_index]
@@ -314,22 +305,6 @@ class ClaimLensGraph:
         try:
             iteration = state["iteration_counts"].get(current_claim.id, 0)
             existing_queries = state["search_queries"].get(current_claim.id, [])
-
-            # ── Pull context notes ──────────────────────────────────────────
-            claim_contexts = state.get("claim_contexts", {})
-            ctx_dict = claim_contexts.get(current_claim.id)
-            context_string = ""
-            enriched_text = current_claim.text
-
-            if ctx_dict:
-                notes = ctx_dict.get("notes", [])
-                if notes:
-                    lines = ["[Background Context]"]
-                    for n in notes:
-                        lines.append(f"- {n['entity']}: {n['note']}")
-                    context_string = "\n".join(lines)
-                enriched_text = ctx_dict.get("enriched_claim_text") or current_claim.text
-            # ───────────────────────────────────────────────────────────────
 
             if iteration > 0 and existing_queries:
                 evidence_gap = "Need more relevant evidence for verification"
@@ -339,11 +314,7 @@ class ClaimLensGraph:
                     evidence_gap,
                 )
             else:
-                queries = self.search_architect.generate_queries_with_context(
-                    current_claim,
-                    context_string=context_string,
-                    enriched_text=enriched_text,
-                )
+                queries = self.search_architect.generate_queries(current_claim)
 
             all_queries = existing_queries + queries
             search_queries = {**state["search_queries"], current_claim.id: all_queries}
@@ -418,6 +389,30 @@ class ClaimLensGraph:
         except Exception as e:
             logger.error(f"Evidence search failed: {e}")
             return {}
+
+    def _frame_evidence_node(self, state: GraphState) -> GraphState:
+        """Extract event frames for evidence snippets."""
+        claims = state["claims"]
+        current_index = state["current_claim_index"]
+        current_claim = claims[current_index]
+
+        try:
+            evidence = state["evidence_buffer"].get(current_claim.id, [])
+            if not evidence:
+                return {}
+
+            for ev in evidence:
+                if ev.event_frame is None:
+                    ev.event_frame = self.event_frame_agent.frame_evidence(current_claim, ev)
+
+            evidence_buffer = {
+                **state["evidence_buffer"],
+                current_claim.id: evidence
+            }
+            return {"evidence_buffer": evidence_buffer}
+        except Exception as e:
+            logger.error(f"Evidence framing failed: {e}")
+            return {}
     
     def _assess_credibility_node(self, state: GraphState) -> GraphState:
         """Assess credibility of evidence sources for the current claim.
@@ -478,22 +473,10 @@ class ClaimLensGraph:
             evidence = state["evidence_buffer"].get(current_claim.id, [])
             iteration = state["iteration_counts"].get(current_claim.id, 1)
 
-            # Attach context summary to claim text for verifier reasoning
-            claim_contexts = state.get("claim_contexts", {})
-            ctx_dict = claim_contexts.get(current_claim.id)
-            context_hint = ""
-            enriched_claim_text = ""
-
-            if ctx_dict:
-                context_hint = ctx_dict.get("context_summary", "")
-                enriched_claim_text = ctx_dict.get("enriched_claim_text", "")
-
-            result = self.verifier_agent.verify_with_context(
+            result = self.verifier_agent.verify_with_retry(
                 current_claim,
                 evidence,
                 iteration,
-                context_hint=context_hint,
-                enriched_claim_text=enriched_claim_text, 
             )
 
             return {"_current_result": result}

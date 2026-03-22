@@ -34,7 +34,7 @@ const PIPELINE_STEPS: {
     description: "Breaking text into claims",
   },
   {
-    node: "assess_context",
+    node: "enrich_context",
     label: "Context",
     icon: BookOpen,
     description: "Gathering background context",
@@ -80,10 +80,12 @@ const PIPELINE_STEPS: {
 // Map intermediate nodes to the visible step they belong to
 const NODE_TO_STEP: Record<string, PipelineNode> = {
   decompose_claims: "decompose_claims",
-  assess_context: "assess_context",
-  prepare_claim: "assess_context",
+  prepare_claim: "enrich_context",
+  enrich_context: "enrich_context",
+  frame_claim: "enrich_context",
   generate_queries: "generate_queries",
   search_evidence: "search_evidence",
+  frame_evidence: "search_evidence",
   assess_credibility: "assess_credibility",
   verify_claim: "verify_claim",
   finalize_claim: "verify_claim",
