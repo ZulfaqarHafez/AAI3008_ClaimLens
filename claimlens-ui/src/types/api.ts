@@ -38,11 +38,19 @@ export interface EventFrame {
 export interface ClaimContext {
   normalized_claim: string;
   context_summary: string;
+  enriched_claim_text?: string | null;
   temporal_context?: string | null;
   venue_context?: string | null;
   entity_aliases?: string[];
   search_hints?: string[];
   event_frame?: EventFrame | null;
+  context_notes?: ContextNote[];
+}
+
+export interface ContextNote {
+  entity: string;
+  note: string;
+  confidence?: number;
 }
 
 export interface Evidence {

@@ -27,14 +27,17 @@ RULES:
 3. Use venue/institution context only when it is clearly implied by the claim.
 4. Provide entity aliases/titles only if well-known or explicitly mentioned.
 5. If a field is unknown, set it to null or an empty list.
+6. enriched_claim_text must preserve ALL specific facts (dates, numbers, names).
 
 Respond with a JSON object containing:
 - normalized_claim: string
 - context_summary: string
+- enriched_claim_text: string
 - temporal_context: string or null
 - venue_context: string or null
 - entity_aliases: array of strings
-- search_hints: array of strings"""
+- search_hints: array of strings
+- context_notes: array of {entity, note, confidence}"""
 
     def __init__(self, llm_service: Optional[LLMService] = None):
         self.llm_service = llm_service or LLMService()
@@ -52,6 +55,7 @@ SOURCE SENTENCE: "{claim.source_sentence}"
                 "properties": {
                     "normalized_claim": {"type": "string"},
                     "context_summary": {"type": "string"},
+                    "enriched_claim_text": {"type": "string"},
                     "temporal_context": {"type": ["string", "null"]},
                     "venue_context": {"type": ["string", "null"]},
                     "entity_aliases": {
@@ -61,15 +65,29 @@ SOURCE SENTENCE: "{claim.source_sentence}"
                     "search_hints": {
                         "type": "array",
                         "items": {"type": "string"}
+                    },
+                    "context_notes": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "entity": {"type": "string"},
+                                "note": {"type": "string"},
+                                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                            },
+                            "required": ["entity", "note", "confidence"],
+                        }
                     }
                 },
                 "required": [
                     "normalized_claim",
                     "context_summary",
+                    "enriched_claim_text",
                     "temporal_context",
                     "venue_context",
                     "entity_aliases",
-                    "search_hints"
+                    "search_hints",
+                    "context_notes"
                 ]
             }
 
@@ -84,10 +102,12 @@ SOURCE SENTENCE: "{claim.source_sentence}"
             context = ClaimContext(
                 normalized_claim=result["normalized_claim"],
                 context_summary=result["context_summary"],
+                enriched_claim_text=result.get("enriched_claim_text") or result["normalized_claim"],
                 temporal_context=result.get("temporal_context"),
                 venue_context=result.get("venue_context"),
                 entity_aliases=result.get("entity_aliases", []),
                 search_hints=result.get("search_hints", []),
+                context_notes=result.get("context_notes", []),
             )
             return self._apply_rule_based_context(claim, context)
         except Exception as e:
@@ -95,10 +115,12 @@ SOURCE SENTENCE: "{claim.source_sentence}"
             context = ClaimContext(
                 normalized_claim=claim.text,
                 context_summary=claim.source_sentence or claim.text,
+                enriched_claim_text=claim.text,
                 temporal_context=None,
                 venue_context=None,
                 entity_aliases=[],
                 search_hints=[],
+                context_notes=[],
             )
             return self._apply_rule_based_context(claim, context)
 

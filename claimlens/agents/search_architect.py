@@ -74,10 +74,16 @@ Respond with a JSON object containing:
         """
         context_block = self._format_context_block(claim)
 
+        effective_text = claim.text
+        context = getattr(claim, "context", None)
+        if context and context.enriched_claim_text and context.enriched_claim_text != claim.text:
+            effective_text = context.enriched_claim_text
+
         user_prompt = f"""Generate {num_queries} diverse search queries to verify this claim:
 
-CLAIM: "{claim.text}"
+CLAIM: "{effective_text}"
 
+ORIGINAL CLAIM (if rewritten above): "{claim.text}"
 CONTEXT (original sentence): "{claim.source_sentence}"
 {context_block}
 
@@ -180,9 +186,15 @@ Generate queries that will help find evidence to support OR refute this claim.""
         """
         context_block = self._format_context_block(claim)
 
+        effective_text = claim.text
+        context = getattr(claim, "context", None)
+        if context and context.enriched_claim_text and context.enriched_claim_text != claim.text:
+            effective_text = context.enriched_claim_text
+
         user_prompt = f"""Generate 2 new search queries to find missing evidence for this claim.
 
-CLAIM: "{claim.text}"
+CLAIM: "{effective_text}"
+ORIGINAL CLAIM (if rewritten above): "{claim.text}"
 {context_block}
 
 PREVIOUS QUERIES TRIED:
@@ -228,6 +240,8 @@ Generate different queries that might find the missing evidence."""
         lines = []
         if context.normalized_claim and context.normalized_claim != claim.text:
             lines.append(f"Normalized claim: {context.normalized_claim}")
+        if context.enriched_claim_text and context.enriched_claim_text != claim.text:
+            lines.append(f"Enriched claim: {context.enriched_claim_text}")
         if context.context_summary:
             lines.append(f"Context summary: {context.context_summary}")
         if context.temporal_context:
@@ -238,6 +252,9 @@ Generate different queries that might find the missing evidence."""
             lines.append(f"Entity aliases: {', '.join(context.entity_aliases[:6])}")
         if context.search_hints:
             lines.append(f"Search hints: {', '.join(context.search_hints[:6])}")
+        if context.context_notes:
+            notes = "; ".join(f"{n.entity}: {n.note}" for n in context.context_notes[:6])
+            lines.append(f"Context notes: {notes}")
 
         if not lines:
             return ""

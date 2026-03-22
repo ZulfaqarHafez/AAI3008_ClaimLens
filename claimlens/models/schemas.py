@@ -17,6 +17,19 @@ class EventFrame(BaseModel):
     context: Optional[str] = Field(default=None, description="Broader context or setting")
 
 
+class ContextNote(BaseModel):
+    """A single context annotation for a claim."""
+
+    entity: str = Field(..., description="Entity or concept referenced")
+    note: str = Field(..., description="Contextual note for the entity or concept")
+    confidence: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in this note (0.0-1.0)",
+    )
+
+
 class ClaimStatus(str, Enum):
     """Status of a claim in the verification pipeline."""
     PENDING = "pending"
@@ -44,6 +57,10 @@ class ClaimContext(BaseModel):
         ...,
         description="Short contextual summary that may help interpret the claim"
     )
+    enriched_claim_text: Optional[str] = Field(
+        default=None,
+        description="Self-contained, context-enriched claim text preserving all original facts"
+    )
     temporal_context: Optional[str] = Field(
         default=None,
         description="Temporal context if explicitly stated or inferable without guessing"
@@ -60,6 +77,10 @@ class ClaimContext(BaseModel):
         default_factory=list,
         description="Search hints or related phrases to improve evidence retrieval"
     )
+    context_notes: List[ContextNote] = Field(
+        default_factory=list,
+        description="Structured context notes for entities or terms in the claim"
+    )
     event_frame: Optional["EventFrame"] = Field(
         default=None,
         description="Structured event frame for matching evidence to the claim"
@@ -70,10 +91,18 @@ class ClaimContext(BaseModel):
             "example": {
                 "normalized_claim": "Gan Kim Yong spoke in the Parliament of Singapore on March 2.",
                 "context_summary": "Committee of Supply debates are held in the Parliament of Singapore.",
+                "enriched_claim_text": "On March 2, Deputy Prime Minister Gan Kim Yong spoke in the Parliament of Singapore during the Committee of Supply debate.",
                 "temporal_context": "March 2 (year not specified)",
                 "venue_context": "Parliament of Singapore",
                 "entity_aliases": ["Gan Kim Yong", "Deputy Prime Minister", "Minister for Trade and Industry"],
-                "search_hints": ["Committee of Supply debate Parliament Singapore", "Gan Kim Yong March 2 speech"]
+                "search_hints": ["Committee of Supply debate Parliament Singapore", "Gan Kim Yong March 2 speech"],
+                "context_notes": [
+                    {
+                        "entity": "Committee of Supply debate",
+                        "note": "Parliamentary proceedings focused on budget allocations",
+                        "confidence": 0.9
+                    }
+                ],
             }
         }
 

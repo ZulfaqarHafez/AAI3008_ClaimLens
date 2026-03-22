@@ -252,6 +252,12 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
                     {result.claim.context.normalized_claim}
                   </p>
                 )}
+                {result.claim.context.enriched_claim_text && (
+                  <p>
+                    <span className="font-semibold text-gray-700">Enriched: </span>
+                    {result.claim.context.enriched_claim_text}
+                  </p>
+                )}
                 {result.claim.context.context_summary && (
                   <p>
                     <span className="font-semibold text-gray-700">Summary: </span>
@@ -283,6 +289,19 @@ function ResultCard({ result, index }: { result: VerificationResult; index: numb
                       <span className="font-semibold text-gray-700">Search hints: </span>
                       {result.claim.context.search_hints.join(", ")}
                     </p>
+                  )}
+                {result.claim.context.context_notes &&
+                  result.claim.context.context_notes.length > 0 && (
+                    <div>
+                      <span className="font-semibold text-gray-700">Context notes: </span>
+                      <ul className="mt-1 list-disc pl-4 text-xs text-gray-600">
+                        {result.claim.context.context_notes.slice(0, 6).map((n, idx) => (
+                          <li key={idx}>
+                            <span className="font-semibold text-gray-700">{n.entity}:</span> {n.note}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
               </div>
             </div>

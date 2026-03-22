@@ -264,6 +264,9 @@ class ClaimLensGraph:
 
         current_claim = claims[current_index]
 
+        if current_claim.context is not None:
+            return {}
+
         try:
             current_claim.context = self.context_agent.enrich(current_claim)
             logger.debug(

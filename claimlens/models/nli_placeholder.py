@@ -334,6 +334,8 @@ Analyze the evidence and provide your verdict."""
         lines = []
         if context.normalized_claim and context.normalized_claim != claim.text:
             lines.append(f"Normalized claim: {context.normalized_claim}")
+        if context.enriched_claim_text and context.enriched_claim_text != claim.text:
+            lines.append(f"Enriched claim: {context.enriched_claim_text}")
         if context.context_summary:
             lines.append(f"Context summary: {context.context_summary}")
         if context.temporal_context:
@@ -342,6 +344,9 @@ Analyze the evidence and provide your verdict."""
             lines.append(f"Venue context: {context.venue_context}")
         if context.entity_aliases:
             lines.append(f"Entity aliases: {', '.join(context.entity_aliases[:6])}")
+        if context.context_notes:
+            notes = "; ".join(f"{n.entity}: {n.note}" for n in context.context_notes[:6])
+            lines.append(f"Context notes: {notes}")
 
         if not lines:
             return ""

@@ -444,11 +444,15 @@ class VerifierAgent:
 
         if context:
             _merge(context.normalized_claim)
+            _merge(context.enriched_claim_text)
             _merge(context.context_summary)
             _merge(context.temporal_context)
             _merge(context.venue_context)
             for alias in context.entity_aliases or []:
                 _merge(alias)
+            for note in context.context_notes or []:
+                _merge(note.entity)
+                _merge(note.note)
 
         # Add lightweight equivalence expansions
         expansions = {

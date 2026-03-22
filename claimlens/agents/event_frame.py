@@ -50,6 +50,8 @@ Return which dimensions failed or contradicted."""
             lines: List[str] = []
             if context.normalized_claim:
                 lines.append(f"Normalized claim: {context.normalized_claim}")
+            if context.enriched_claim_text:
+                lines.append(f"Enriched claim: {context.enriched_claim_text}")
             if context.context_summary:
                 lines.append(f"Context summary: {context.context_summary}")
             if context.temporal_context:
@@ -58,6 +60,9 @@ Return which dimensions failed or contradicted."""
                 lines.append(f"Venue context: {context.venue_context}")
             if context.entity_aliases:
                 lines.append(f"Entity aliases: {', '.join(context.entity_aliases[:6])}")
+            if context.context_notes:
+                notes = "; ".join(f"{n.entity}: {n.note}" for n in context.context_notes[:6])
+                lines.append(f"Context notes: {notes}")
             if lines:
                 context_block = "\nADDITIONAL CONTEXT:\n" + "\n".join(f"- {l}" for l in lines)
 
@@ -78,6 +83,8 @@ SOURCE SENTENCE: "{claim.source_sentence}"
             lines: List[str] = []
             if context.normalized_claim:
                 lines.append(f"Normalized claim: {context.normalized_claim}")
+            if context.enriched_claim_text:
+                lines.append(f"Enriched claim: {context.enriched_claim_text}")
             if context.context_summary:
                 lines.append(f"Context summary: {context.context_summary}")
             if context.temporal_context:
@@ -86,6 +93,9 @@ SOURCE SENTENCE: "{claim.source_sentence}"
                 lines.append(f"Venue context: {context.venue_context}")
             if context.entity_aliases:
                 lines.append(f"Entity aliases: {', '.join(context.entity_aliases[:6])}")
+            if context.context_notes:
+                notes = "; ".join(f"{n.entity}: {n.note}" for n in context.context_notes[:6])
+                lines.append(f"Context notes: {notes}")
             if lines:
                 context_block = "\nADDITIONAL CONTEXT:\n" + "\n".join(f"- {l}" for l in lines)
 
@@ -149,6 +159,9 @@ EVIDENCE SNIPPET: "{evidence.snippet}"
                 lines.append(f"Temporal context: {context.temporal_context}")
             if context.entity_aliases:
                 lines.append(f"Entity aliases: {', '.join(context.entity_aliases[:6])}")
+            if context.context_notes:
+                notes = "; ".join(f"{n.entity}: {n.note}" for n in context.context_notes[:6])
+                lines.append(f"Context notes: {notes}")
             if lines:
                 context_block = "\nADDITIONAL CONTEXT:\n" + "\n".join(f"- {l}" for l in lines)
 
