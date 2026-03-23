@@ -27,6 +27,16 @@ from ..models.schemas import (
     Verdict,
 )
 from ..graph.orchestrator import ClaimLensGraph, create_graph
+from ..storage import (
+    init_redis,
+    init_postgres,
+    create_tables,
+    save_report,
+    save_job,
+    get_job,
+    delete_job,
+    check_rate_limit,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -97,31 +107,37 @@ async def verify_api_key(api_key: str = Security(api_key_header)) -> bool:
 
 
 async def rate_limit_check(request: Request):
-    """Check rate limiting for the request.
-    
-    Args:
-        request: FastAPI request object
-        
-    Raises:
-        HTTPException: If rate limit exceeded
-    """
     client_ip = request.client.host if request.client else "unknown"
+
+    try:
+        allowed = check_rate_limit(
+            client_ip,
+            settings.RATE_LIMIT_REQUESTS,
+            settings.RATE_LIMIT_WINDOW
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Please try again later."
+            )
+        return
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     current_time = time_module.time()
     window_start = current_time - settings.RATE_LIMIT_WINDOW
-    
-    # Clean old entries
     rate_limit_storage[client_ip] = [
         t for t in rate_limit_storage[client_ip] if t > window_start
     ]
-    
-    # Check limit
+
     if len(rate_limit_storage[client_ip]) >= settings.RATE_LIMIT_REQUESTS:
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded. Please try again later."
         )
-    
-    # Record request
+
     rate_limit_storage[client_ip].append(current_time)
 
 
@@ -152,17 +168,21 @@ def sanitize_error_message(error: Exception) -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager."""
-    # Startup
     logger.info("Starting ClaimLens API...")
     logger.info(f"Using LLM model: {settings.LLM_MODEL}")
     logger.info(f"Verifier type: {settings.VERIFIER_TYPE}")
     logger.info(f"Search provider: {settings.SEARCH_PROVIDER}")
-    
-    
+
+    try:
+        init_redis()
+        init_postgres()
+        create_tables()
+        logger.info("Storage initialized")
+    except Exception as e:
+        logger.warning(f"Storage init failed, continuing without full persistence: {e}")
+
     yield
-    
-    # Shutdown
+
     logger.info("Shutting down ClaimLens API...")
 
 
@@ -259,6 +279,7 @@ async def verify_text(
     try:
         graph = get_graph()
         report = await graph.arun(request.text)
+        save_report(report)
         
         logger.info(
             f"Verification completed. Trust score: {report.overall_trust_score:.2f}"
@@ -277,28 +298,27 @@ async def verify_text(
 # ==================== Async Verification with Job ID ====================
 
 async def run_verification_job(job_id: str, text: str):
-    """Background task to run verification.
-    
-    Args:
-        job_id: Unique job identifier
-        text: Text to verify
-    """
     try:
         jobs[job_id]["status"] = JobStatus.PROCESSING
-        
+        save_job(job_id, jobs[job_id])
+
         graph = get_graph()
         report = await graph.arun(text)
-        
+
         jobs[job_id]["status"] = JobStatus.COMPLETED
-        jobs[job_id]["report"] = report
+        jobs[job_id]["report"] = json.loads(report.model_dump_json())
         jobs[job_id]["completed_at"] = datetime.utcnow().isoformat()
-        
+
+        save_job(job_id, jobs[job_id])
+        save_report(report)
+
         logger.info(f"Job {job_id} completed successfully")
-        
+
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
         jobs[job_id]["status"] = JobStatus.FAILED
         jobs[job_id]["error"] = sanitize_error_message(e)
+        save_job(job_id, jobs[job_id])
 
 
 @app.post("/verify/async", response_model=VerifyResponse)
@@ -342,6 +362,8 @@ async def verify_text_async(
         "created_at": datetime.utcnow().isoformat(),
         "completed_at": None,
     }
+
+    save_job(job_id, jobs[job_id])
     
     # Start background task
     background_tasks.add_task(run_verification_job, job_id, request.text)
@@ -365,13 +387,16 @@ async def get_verification_status(job_id: str, _: bool = Depends(verify_api_key)
     Returns:
         VerifyResponse with current status and report (if completed)
     """
-    if job_id not in jobs:
+    job = jobs.get(job_id)
+
+    if job is None:
+        job = get_job(job_id)
+
+    if job is None:
         raise HTTPException(
             status_code=404,
             detail=f"Job not found: {job_id}"
-        )
-    
-    job = jobs[job_id]
+        )   
     
     message = None
     if job["status"] == JobStatus.PROCESSING:
@@ -399,14 +424,11 @@ async def delete_verification_job(job_id: str, _: bool = Depends(verify_api_key)
     Returns:
         Confirmation message
     """
-    if job_id not in jobs:
-        raise HTTPException(
-            status_code=404,
-            detail="Job not found"  # Don't reveal job_id in error
-        )
-    
-    del jobs[job_id]
-    
+    if job_id in jobs:
+        del jobs[job_id]
+
+    delete_job(job_id)
+
     return {"message": "Job deleted successfully"}
 
 

@@ -2,39 +2,38 @@
 
 import os
 from pydantic_settings import BaseSettings
-from typing import Literal
+from typing import Literal, Optional
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
     # API Keys
     OPENAI_API_KEY: str = ""
     TAVILY_API_KEY: str = ""
     SERPAPI_KEY: str = ""
-    
+
     # LLM Configuration
     LLM_MODEL: str = "gpt-4o"
     LLM_TEMPERATURE: float = 0.1
-    
+
     # Verification Configuration
     MAX_VERIFICATION_ITERATIONS: int = 3
     CONFIDENCE_THRESHOLD: float = 0.7
     MAX_EVIDENCE_PER_CLAIM: int = 5
     SEARCH_RESULTS_PER_QUERY: int = 5
 
-    
     # Verifier Selection
     VERIFIER_TYPE: Literal["huggingface", "openai", "claimlens"] = "claimlens"
     HF_NLI_MODEL: str = "Zulfhagez/claimlens-deberta-v3-nli"
-    
+
     # Search Provider
     SEARCH_PROVIDER: Literal["tavily", "serpapi"] = "tavily"
-    
+
     # API Configuration
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
-    
+
     # Security Configuration
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"  # Comma-separated list
     API_KEY: str = ""  # Optional API key for authentication
@@ -43,7 +42,19 @@ class Settings(BaseSettings):
     MAX_TEXT_LENGTH: int = 10000  # Maximum input text length
     MAX_JOBS_STORED: int = 1000  # Maximum jobs to keep in memory
     DEBUG_MODE: bool = False  # Set to True only in development
-    
+
+    # PostgreSQL
+    DB_HOST: Optional[str] = None
+    DB_PORT: int = 5432
+    DB_NAME: Optional[str] = None
+    DB_USER: Optional[str] = None
+    DB_PASSWORD: Optional[str] = None
+
+    # Redis
+    REDIS_HOST: Optional[str] = None
+    REDIS_PORT: int = 6379
+    REDIS_SSL: bool = True
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
