@@ -100,8 +100,8 @@ ClaimLens is deployed on AWS with the following infrastructure:
 
 ### Application Access
 
-- **Frontend:** [runs on port `3000`](http://98.86.56.208:3000/)
-- **Backend API:** [runs on port `8000`](http://98.86.56.208:8000/docs)
+- **Frontend:** http://98.86.56.208:3000/
+- **Backend API:** http://98.86.56.208:8000/docs
 
 ### Persistent Storage
 
