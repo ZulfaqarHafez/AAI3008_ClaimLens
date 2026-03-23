@@ -89,6 +89,28 @@ npm run dev
 - Backend API docs: http://localhost:8000/docs
 - Frontend UI: http://localhost:3000
 
+## ☁️ AWS Deployment and Persistent Storage
+
+ClaimLens is deployed on AWS with the following infrastructure:
+
+- **Amazon EC2** for hosting the FastAPI backend
+- **Amazon RDS PostgreSQL** for persistent storage of verification reports
+- **Amazon ElastiCache Redis** for asynchronous job and state storage
+- **Elastic IP** for a stable public backend address
+
+### Persistent Storage
+
+Persistent storage was implemented and validated end-to-end.
+
+- Verification results are stored durably in **PostgreSQL**
+- Async verification job state is managed through the backend storage layer with **Redis**
+- Successful verification runs can be confirmed in the `verification_reports` table in RDS
+
+### Running the Backend on EC2
+
+```bash
+uvicorn claimlens.api.main:app --host 0.0.0.0 --port 8000 --env-file .env
+
 ## 🎯 How the App Works
 
 ### User Flow
