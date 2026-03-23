@@ -10,7 +10,6 @@ import {
   BarChart3,
   FileBarChart,
   Loader2,
-  Circle,
   ArrowRight,
   BookOpen,
 } from "lucide-react";
@@ -34,7 +33,7 @@ const PIPELINE_STEPS: {
     description: "Breaking text into claims",
   },
   {
-    node: "assess_context",
+    node: "enrich_context",
     label: "Context",
     icon: BookOpen,
     description: "Gathering background context",
@@ -77,13 +76,14 @@ const PIPELINE_STEPS: {
   },
 ];
 
-// Map intermediate nodes to the visible step they belong to
 const NODE_TO_STEP: Record<string, PipelineNode> = {
   decompose_claims: "decompose_claims",
-  assess_context: "assess_context",
-  prepare_claim: "assess_context",
+  prepare_claim: "enrich_context",
+  enrich_context: "enrich_context",
+  frame_claim: "enrich_context",
   generate_queries: "generate_queries",
   search_evidence: "search_evidence",
+  frame_evidence: "search_evidence",
   assess_credibility: "assess_credibility",
   verify_claim: "verify_claim",
   finalize_claim: "verify_claim",
@@ -97,11 +97,9 @@ function getStepStatus(
   completedNodes: PipelineNode[]
 ): "idle" | "active" | "done" {
   const mappedCurrent = currentNode ? NODE_TO_STEP[currentNode] : null;
-
-  // Check if this step's node (or any node mapped to it) is completed
   const mappedCompleted = completedNodes.map((n) => NODE_TO_STEP[n]);
-  if (mappedCompleted.includes(step)) return "done";
 
+  if (mappedCompleted.includes(step)) return "done";
   if (mappedCurrent === step) return "active";
 
   return "idle";
@@ -109,70 +107,66 @@ function getStepStatus(
 
 export default function PipelineVisualizer({ currentNode, completedNodes }: Props) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-400">
-        Pipeline Progress
-      </p>
-      <div className="flex items-center justify-between gap-1">
-        {PIPELINE_STEPS.map((step, i) => {
-          const status = getStepStatus(step.node, currentNode, completedNodes);
-          const Icon = step.icon;
+    <section className="panel rounded-[1.6rem] p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5e757c]">Pipeline Progress</p>
+        <span className="rounded-full border border-[#cad8d5] bg-[#eef8f6] px-3 py-1 text-[11px] font-semibold text-[#2f5559]">
+          Live status
+        </span>
+      </div>
 
-          return (
-            <div key={step.node} className="flex items-center gap-1">
-              {/* Step */}
-              <div className="flex flex-col items-center gap-1.5">
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 ${
-                    status === "active"
-                      ? "bg-indigo-100 ring-2 ring-indigo-400 ring-offset-1"
-                      : status === "done"
-                        ? "bg-emerald-100"
-                        : "bg-gray-100"
-                  }`}
-                >
-                  {status === "active" ? (
-                    <Loader2 className="h-4.5 w-4.5 animate-spin text-indigo-600" />
-                  ) : status === "done" ? (
-                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600" />
-                  ) : (
-                    <Icon
-                      className={`h-4.5 w-4.5 ${
-                        status === "idle" ? "text-gray-400" : "text-gray-600"
-                      }`}
-                    />
-                  )}
+      <div className="overflow-x-auto">
+        <div className="flex min-w-[740px] items-center justify-between gap-1 pb-1">
+          {PIPELINE_STEPS.map((step, i) => {
+            const status = getStepStatus(step.node, currentNode, completedNodes);
+            const Icon = step.icon;
+
+            return (
+              <div key={step.node} className="flex items-center gap-1">
+                <div className="flex flex-col items-center gap-1.5 text-center">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl border transition-all duration-300 ${
+                      status === "active"
+                        ? "border-[var(--brand)]/40 bg-[#dbf0ec]"
+                        : status === "done"
+                          ? "border-emerald-300 bg-emerald-100"
+                          : "border-[#d6d8cd] bg-[#f4f2e9]"
+                    }`}
+                  >
+                    {status === "active" ? (
+                      <Loader2 className="h-4.5 w-4.5 animate-spin text-[var(--brand-strong)]" />
+                    ) : status === "done" ? (
+                      <CheckCircle2 className="h-4.5 w-4.5 text-emerald-700" />
+                    ) : (
+                      <Icon className="h-4.5 w-4.5 text-[#70858a]" />
+                    )}
+                  </div>
+                  <p
+                    className={`text-[10px] font-bold uppercase tracking-[0.1em] ${
+                      status === "active"
+                        ? "text-[var(--brand-strong)]"
+                        : status === "done"
+                          ? "text-emerald-700"
+                          : "text-[#6f8187]"
+                    }`}
+                  >
+                    {step.label}
+                  </p>
+                  <p className="max-w-[76px] text-[9px] leading-tight text-[#6f858b]">{step.description}</p>
                 </div>
-                <span
-                  className={`text-[10px] font-semibold leading-none ${
-                    status === "active"
-                      ? "text-indigo-600"
-                      : status === "done"
-                        ? "text-emerald-600"
-                        : "text-gray-400"
-                  }`}
-                >
-                  {step.label}
-                </span>
-                {status === "active" && (
-                  <span className="mt-0.5 text-[9px] text-indigo-400 animate-pulse max-w-[80px] text-center leading-tight">
-                    {step.description}
-                  </span>
+
+                {i < PIPELINE_STEPS.length - 1 && (
+                  <ArrowRight
+                    className={`mx-0.5 h-3.5 w-3.5 shrink-0 ${
+                      status === "done" ? "text-emerald-400" : "text-[#b4c0bf]"
+                    }`}
+                  />
                 )}
               </div>
-
-              {/* Arrow connector */}
-              {i < PIPELINE_STEPS.length - 1 && (
-                <ArrowRight
-                  className={`mx-0.5 h-3.5 w-3.5 shrink-0 ${
-                    status === "done" ? "text-emerald-300" : "text-gray-200"
-                  }`}
-                />
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

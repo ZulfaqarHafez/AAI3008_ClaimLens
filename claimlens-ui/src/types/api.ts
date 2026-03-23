@@ -24,6 +24,33 @@ export interface Claim {
   text: string;
   source_sentence: string;
   status: ClaimStatus;
+  context?: ClaimContext;
+}
+
+export interface EventFrame {
+  person?: string | null;
+  action?: string | null;
+  location?: string | null;
+  time?: string | null;
+  context?: string | null;
+}
+
+export interface ClaimContext {
+  normalized_claim: string;
+  context_summary: string;
+  enriched_claim_text?: string | null;
+  temporal_context?: string | null;
+  venue_context?: string | null;
+  entity_aliases?: string[];
+  search_hints?: string[];
+  event_frame?: EventFrame | null;
+  context_notes?: ContextNote[];
+}
+
+export interface ContextNote {
+  entity: string;
+  note: string;
+  confidence?: number;
 }
 
 export interface Evidence {
@@ -36,6 +63,7 @@ export interface Evidence {
   credibility_reasoning?: string;
   published_date?: string;
   retrieved_at?: string;
+  event_frame?: EventFrame | null;
 }
 
 export interface VerificationResult {
@@ -88,9 +116,11 @@ export interface CompleteData {
 export type PipelineNode =
   | "decompose_claims"
   | "prepare_claim"
-  | "assess_context"
+  | "enrich_context"
+  | "frame_claim"
   | "generate_queries"
   | "search_evidence"
+  | "frame_evidence"
   | "assess_credibility"
   | "verify_claim"
   | "finalize_claim"
