@@ -198,19 +198,27 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
     
-    # Add CORS middleware with configurable origins
+    # Add CORS middleware with configurable origins.
+    # If CORS_ORIGINS contains "*" or is empty, allow all origins.
+    # This is required when the frontend is served from a different host (e.g. EC2
+    # public IP): the browser sends an OPTIONS preflight that must receive the correct
+    # Access-Control-Allow-Origin header, otherwise the POST never fires and the
+    # frontend shows "Internal Server Error".
     cors_origins = [
-        origin.strip() 
-        for origin in settings.CORS_ORIGINS.split(",") 
+        origin.strip()
+        for origin in settings.CORS_ORIGINS.split(",")
         if origin.strip()
     ]
-    
+    allow_all = (not cors_origins) or ("*" in cors_origins)
+    if allow_all:
+        cors_origins = ["*"]
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE"],
-        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+        allow_credentials=not allow_all,  # credentials forbidden when origin="*"
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     
     return app
@@ -218,6 +226,25 @@ def create_app() -> FastAPI:
 
 # Create app instance
 app = create_app()
+
+
+@app.middleware("http")
+async def cors_preflight_middleware(request, call_next):
+    """Handle OPTIONS preflight before routing so /verify/{job_id} cannot intercept it."""
+    if request.method == "OPTIONS":
+        from fastapi.responses import Response
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "86400",
+            }
+        )
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
 
 # ==================== Health Check ====================
@@ -377,6 +404,20 @@ async def verify_text_async(
     )
 
 
+@app.options("/verify/stream")
+async def verify_stream_preflight():
+    """Explicit OPTIONS handler so CORS preflight never returns 400."""
+    from fastapi.responses import Response
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+
 @app.get("/verify/{job_id}", response_model=VerifyResponse)
 async def get_verification_status(job_id: str, _: bool = Depends(verify_api_key)):
     """Get the status of an async verification job.
@@ -469,13 +510,23 @@ async def generate_sse_events(text: str):
             finally:
                 q.put(_SENTINEL)
         
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(None, _run_stream)
+        loop = asyncio.get_running_loop()
+        future = loop.run_in_executor(None, _run_stream)
+        _ = future  # fire-and-forget is intentional; thread puts results into queue
         
+        HEARTBEAT_INTERVAL = 15.0  # seconds between keepalive pings
+        last_heartbeat = loop.time()
+
         while True:
-            # Non-blocking poll keeps the event loop free to flush SSE
+            # Non-blocking poll keeps the event loop free to flush SSE.
+            # Send a heartbeat comment every HEARTBEAT_INTERVAL seconds so the
+            # browser/proxy doesn't close the connection during slow operations.
             while q.empty():
                 await asyncio.sleep(0.05)
+                now = loop.time()
+                if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+                    yield ": heartbeat\n\n"
+                    last_heartbeat = now
             
             item = q.get_nowait()
             if item is _SENTINEL:

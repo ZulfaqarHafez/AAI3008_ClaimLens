@@ -116,12 +116,19 @@ export function VerificationProvider({ children }: { children: React.ReactNode }
         });
         setProgressMsg(`Verified: "${d.claim_text.slice(0, 60)}..."`);
       },
-      onComplete: () => {
-        setProgressMsg("Finalizing report...");
+      onComplete: (d) => {
+        // Set the report and transition to results directly from the SSE event.
+        // This prevents the "Could not retrieve verification results" error that
+        // fires when the stream closes before verifyTextStream() returns a value.
+        setProgressMsg("Verification complete!");
         setCurrentNode((prev) => {
           if (prev) setCompletedNodes((list) => list.includes(prev) ? list : [...list, prev]);
           return null;
         });
+        if (d.report) {
+          setReport(d.report as FinalReport);
+          setPhase("results");
+        }
       },
       onError: (err: string) => {
         setError(err);
@@ -134,17 +141,44 @@ export function VerificationProvider({ children }: { children: React.ReactNode }
       try {
         result = await verifyTextStream(text, callbacks, controller.signal);
       } catch {
-        result = await verifyText(text, controller.signal);
+        // Stream failed entirely — fall through to sync fallback below
       }
 
       if (controller.signal.aborted) return;
 
+      // onComplete() already set report + phase="results" via the SSE complete event.
+      // Use the return value as a secondary fallback if onComplete didn't fire.
       if (result) {
         setReport(result);
         setPhase("results");
-      } else {
-        setError("Could not retrieve verification results.");
-        setPhase("input");
+        return;
+      }
+
+      // If phase already moved to "results" via onComplete, we're done.
+      // Otherwise fall back to the synchronous /verify endpoint.
+      setPhase((currentPhase) => {
+        if (currentPhase === "results") return currentPhase; // already done
+        // Trigger sync fallback (can't await inside setState, handled below)
+        return "loading";
+      });
+
+      // Sync fallback: call the non-streaming endpoint which is more reliable
+      setProgressMsg("Finalizing results...");
+      try {
+        const syncResult = await verifyText(text, controller.signal);
+        if (controller.signal.aborted) return;
+        if (syncResult) {
+          setReport(syncResult);
+          setPhase("results");
+        }
+      } catch (syncErr) {
+        if (controller.signal.aborted) return;
+        // Only show error if we truly have nothing to show
+        setPhase((currentPhase) => {
+          if (currentPhase === "results") return currentPhase;
+          setError(syncErr instanceof Error ? syncErr.message : "Verification failed");
+          return "input";
+        });
       }
     } catch (e) {
       if (controller.signal.aborted) return;

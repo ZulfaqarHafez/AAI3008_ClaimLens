@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # Security Configuration
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"  # Comma-separated list
+    CORS_ORIGINS: str = "*"  # Comma-separated list
     API_KEY: str = ""  # Optional API key for authentication
     RATE_LIMIT_REQUESTS: int = 100  # Requests per minute
     RATE_LIMIT_WINDOW: int = 60  # Window in seconds

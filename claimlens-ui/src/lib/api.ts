@@ -1,7 +1,9 @@
 import type { FinalReport, ClaimsExtractedData, ClaimVerifiedData, CompleteData, StepData } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
-// Direct backend URL for SSE streaming (bypasses Next.js proxy which buffers SSE)
+// Streaming goes directly to the backend (not through Next.js proxy) to avoid
+// proxy buffering SSE. CORS is handled by RawCORSMiddleware in main.py which
+// intercepts OPTIONS before FastAPI routing can return 400.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 export async function verifyText(
