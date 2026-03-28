@@ -12,6 +12,12 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Required for SSE (Server-Sent Events) to stream through without buffering
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
+  },
 };
 
 export default nextConfig;

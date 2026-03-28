@@ -187,11 +187,17 @@ Assess each evidence piece's relevance to verifying or refuting the claim."""
                     filtered.append(evidence)
             
             logger.info(f"Filtered to {len(filtered)} relevant evidence pieces")
+
+            if not filtered and evidence_list:
+                logger.warning(
+                    "Relevance filter removed all evidence — keeping top 5 by score as fallback"
+                )
+                return sorted(evidence_list, key=lambda e: e.relevance_score, reverse=True)[:5]
+
             return filtered
             
         except Exception as e:
             logger.error(f"Relevance filtering failed: {e}")
-            # Return all evidence with original scores on failure
             return evidence_list
     
     async def asearch_and_filter(

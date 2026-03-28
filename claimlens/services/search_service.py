@@ -268,24 +268,80 @@ class SerpAPISearchService(SearchService):
         
         return "medium"
 
+class OpenAISearchService(SearchService):
+    """Fallback search service using OpenAI's built-in web search tool."""
+
+    def __init__(self, llm_service=None):
+        from ..services.llm_service import LLMService
+        self.llm = llm_service or LLMService()
+
+    def search(self, query: str, num_results: int = 5) -> List[Evidence]:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=self.llm.api_key)
+
+            response = client.responses.create(
+                model="gpt-4o",
+                tools=[{"type": "web_search_preview"}],
+                input=query,
+            )
+
+            evidence_list = []
+            for item in response.output:
+                if item.type == "message":
+                    for block in item.content:
+                        if hasattr(block, "annotations"):
+                            for ann in block.annotations:
+                                if ann.type == "url_citation":
+                                    evidence_list.append(Evidence(
+                                        url=ann.url,
+                                        title=ann.title or ann.url,
+                                        snippet=block.text[:1000] if hasattr(block, "text") else "",
+                                        relevance_score=0.7,
+                                        source_quality="medium",
+                                    ))
+
+            logger.info(f"OpenAI web search returned {len(evidence_list)} results")
+            return evidence_list[:num_results]
+
+        except Exception as e:
+            logger.error(f"OpenAI web search failed: {e}")
+            return []
+
+    async def asearch(self, query: str, num_results: int = 5) -> List[Evidence]:
+        import asyncio
+        return await asyncio.to_thread(self.search, query, num_results)
 
 def get_search_service(provider: Optional[str] = None) -> SearchService:
-    """Factory function to get the appropriate search service.
-    
-    Args:
-        provider: Search provider ("tavily" or "serpapi")
-        
-    Returns:
-        SearchService instance
-    """
     provider = provider or settings.SEARCH_PROVIDER
-    
+
     if provider == "tavily":
-        return TavilySearchService()
+        return FallbackSearchService(TavilySearchService(), OpenAISearchService())
     elif provider == "serpapi":
-        return SerpAPISearchService()
+        return FallbackSearchService(SerpAPISearchService(), OpenAISearchService())
+    elif provider == "openai":
+        return OpenAISearchService()
     else:
         raise ValueError(
             f"Unknown search provider: {provider}. "
-            "Choose from: tavily, serpapi"
+            "Choose from: tavily, serpapi, openai"
         )
+
+
+class FallbackSearchService(SearchService):
+    """Wraps a primary search service and falls back to OpenAI if it returns nothing."""
+
+    def __init__(self, primary: SearchService, fallback: SearchService):
+        self.primary = primary
+        self.fallback = fallback
+
+    def search(self, query: str, num_results: int = 5) -> List[Evidence]:
+        results = self.primary.search(query, num_results)
+        if not results:
+            logger.warning("Primary search returned no results, falling back to OpenAI web search")
+            results = self.fallback.search(query, num_results)
+        return results
+
+    async def asearch(self, query: str, num_results: int = 5) -> List[Evidence]:
+        import asyncio
+        return await asyncio.to_thread(self.search, query, num_results)

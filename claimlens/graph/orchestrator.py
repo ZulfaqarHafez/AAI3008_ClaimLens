@@ -601,7 +601,7 @@ class ClaimLensGraph:
             return "finalize_claim"
         
         # Check if we should continue searching for this claim
-        iteration = state["iteration_counts"].get(current_claim.id, 1)
+        iteration = state["iteration_counts"].get(current_claim.id, 0)
         
         should_continue = self.verifier_agent.should_continue_searching(
             current_result,
@@ -714,8 +714,18 @@ class ClaimLensGraph:
         
         initial_state = create_initial_state(text)
         
-        # Run the graph
-        final_state = self.compiled_graph.invoke(initial_state)
+        # Calculate a safe recursion limit:
+        # Each claim needs ~10 nodes per iteration, plus overhead for decompose/aggregate/report.
+        # Formula: (num_claims * max_iterations * nodes_per_iteration) + overhead
+        num_claims = max(len(initial_state.get("claims", [])), 10)  # use 10 as safe upper bound before decomposition
+        nodes_per_claim = settings.MAX_VERIFICATION_ITERATIONS * 9 + 5  # 9 nodes/iter + finalize overhead
+        recursion_limit = max(200, num_claims * nodes_per_claim + 20)
+        
+        # Run the graph with LangGraph's own recursion_limit (distinct from sys.setrecursionlimit)
+        final_state = self.compiled_graph.invoke(
+            initial_state,
+            config={"recursion_limit": recursion_limit}
+        )
         
         report = final_state.get("final_report")
         
@@ -757,7 +767,14 @@ class ClaimLensGraph:
         
         initial_state = create_initial_state(text)
         
-        for state_update in self.compiled_graph.stream(initial_state):
+        # Use the same generous recursion_limit as run() to avoid GRAPH_RECURSION_LIMIT errors
+        nodes_per_claim = settings.MAX_VERIFICATION_ITERATIONS * 9 + 5
+        recursion_limit = max(200, 10 * nodes_per_claim + 20)
+        
+        for state_update in self.compiled_graph.stream(
+            initial_state,
+            config={"recursion_limit": recursion_limit}
+        ):
             yield state_update
 
 
