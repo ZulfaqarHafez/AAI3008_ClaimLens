@@ -604,6 +604,7 @@ async def generate_sse_events(text: str):
                     }
                 )
                 yield f"event: complete\ndata: {event.model_dump_json()}\n\n"
+                save_report(report)
         
     except Exception as e:
         logger.error(f"Streaming error: {e}")
