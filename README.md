@@ -755,24 +755,6 @@ overall_trust_score = weighted average of:
 
 ---
 
-## Roadmap
-
-- [x] Fine-tuned DeBERTa-v3 NLI model (`claimlens-deberta-v3-nli`)
-- [x] Next.js frontend with real-time SSE streaming
-- [x] Context enrichment and event frame extraction
-- [x] Multi-layer post-verification gatings
-- [x] Source credibility scoring
-- [x] Iterative search refinement with retry logic
-- [x] Async job management with Redis
-- [ ] Redis-backed job persistence in production
-- [ ] Claim deduplication across pipeline runs
-- [ ] Multi-language support
-- [ ] Batch text processing endpoint
-- [ ] Claim provenance and source citation export
-- [ ] User accounts and verification history dashboard
-
----
-
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
