@@ -1,41 +1,559 @@
-# ClaimLens 🔍
+# ClaimLens
 
-An agentic fact-checking pipeline using LangGraph that decomposes user-provided paragraphs into atomic claims and verifies each claim against web evidence using a fine-tuned DeBERTa-v3 NLI model.
+**An agentic fact-checking pipeline powered by LangGraph, fine-tuned DeBERTa-v3 NLI, and a real-time Next.js frontend.**
 
-> **Project for AAI3008 Large Language Model module**
+ClaimLens automatically decomposes any paragraph of text into atomic, independently verifiable claims, retrieves web evidence for each claim through targeted search queries, and verifies each against retrieved evidence using a custom-trained Natural Language Inference model — returning a structured trust report with confidence scores and source citations.
 
-## 🏗️ Architecture
+> **Project for AAI3008 Large Language Models — Singapore Institute of Technology**
+
+---
+
+## Team
+
+| Name | LinkedIn |
+|------|----------|
+| Zulfaqar Hafez | [linkedin.com/in/zulfaqar-hafez](https://www.linkedin.com/in/zulfaqar-hafez/) |
+| Genisa Lee | [linkedin.com/in/genisa-lee](https://www.linkedin.com/in/genisa-lee/) |
+| Tay Wei Lin | [linkedin.com/in/tayweilin](https://www.linkedin.com/in/tayweilin/) |
+| Gallant Teo | [linkedin.com/in/gallant-teo-2ab291186](https://www.linkedin.com/in/gallant-teo-2ab291186/) |
+| Neo Jun Wei | [linkedin.com/in/neojunwei](https://www.linkedin.com/in/neojunwei/) |
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Agent Pipeline](#agent-pipeline)
+- [NLI Verification Model](#nli-verification-model)
+- [API Reference](#api-reference)
+- [Frontend](#frontend)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Data Models](#data-models)
+- [Trust Score Calculation](#trust-score-calculation)
+- [Tech Stack](#tech-stack)
+
+---
+
+## Overview
+
+Modern information environments make it increasingly difficult to assess the accuracy of written claims. ClaimLens addresses this by providing an end-to-end automated pipeline that:
+
+1. **Decomposes** unstructured text into discrete, atomic claims using a language model
+2. **Enriches** each claim with contextual metadata — entity aliases, temporal cues, event frames — for more precise retrieval
+3. **Retrieves** relevant web evidence using targeted, LLM-generated search queries executed in parallel
+4. **Verifies** each claim against retrieved evidence using a fine-tuned DeBERTa-v3 NLI model with LLM cross-checking for uncertain cases
+5. **Aggregates** individual verdicts into a final trust report with an overall confidence score
+
+The system is designed as a **multi-agent workflow** orchestrated by LangGraph, enabling conditional branching, iterative search retries, and isolated failure handling per claim.
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         ClaimLens Pipeline                          │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐     │
-│  │  Input   │───▶│ Decompose│───▶│  Search  │───▶│ Scraper  │     │
-│  │  Text    │    │  Agent   │    │ Architect│    │  Agent   │     │
-│  └──────────┘    └──────────┘    └──────────┘    └──────────┘     │
-│                        │               │               │           │
-│                        ▼               ▼               ▼           │
-│                  ┌──────────┐    ┌──────────┐    ┌──────────┐     │
-│                  │  Claims  │    │ Queries  │    │ Evidence │     │
-│                  └──────────┘    └──────────┘    └──────────┘     │
-│                                                        │           │
-│                                                        ▼           │
-│  ┌──────────┐    ┌──────────┐    ┌──────────────────────────┐     │
-│  │  Final   │◀───│Aggregate │◀───│     Verifier Agent       │     │
-│  │  Report  │    │ Results  │    │  (ClaimLens DeBERTa NLI) │     │
-│  └──────────┘    └──────────┘    └──────────────────────────┘     │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                             ClaimLens Pipeline                               │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌────────────┐     ┌──────────────┐     ┌──────────────┐                  │
+│   │   Input    │────▶│ Decomposition│────▶│   Context    │                  │
+│   │   Text     │     │    Agent     │     │    Agent     │                  │
+│   └────────────┘     └──────────────┘     └──────────────┘                  │
+│                             │                     │                          │
+│                             ▼                     ▼                          │
+│                      ┌──────────┐         ┌──────────────┐                  │
+│                      │  Atomic  │         │  Enriched    │                  │
+│                      │  Claims  │         │  Context +   │                  │
+│                      └──────────┘         │  EventFrames │                  │
+│                                           └──────────────┘                  │
+│                                                  │                           │
+│                                                  ▼                           │
+│   ┌────────────────┐     ┌──────────────┐  ┌──────────────┐                 │
+│   │   Credibility  │◀────│   Scraper    │◀─│    Search    │                 │
+│   │     Agent      │     │    Agent     │  │  Architect   │                 │
+│   └────────────────┘     └──────────────┘  └──────────────┘                 │
+│           │                     │                                            │
+│           ▼                     ▼                                            │
+│   ┌────────────────┐     ┌──────────────┐                                   │
+│   │  Scored        │     │  Filtered    │                                   │
+│   │  Evidence      │     │  Evidence    │                                   │
+│   └────────────────┘     └──────────────┘                                   │
+│           │                     │                                            │
+│           └──────────┬──────────┘                                            │
+│                      ▼                                                       │
+│             ┌─────────────────────────────────────┐                         │
+│             │         Verifier Agent               │                         │
+│             │   ClaimLens DeBERTa-v3 NLI Model     │                         │
+│             │   + Multi-Layer Post-Verification    │                         │
+│             │     Gatings + LLM Cross-Check        │                         │
+│             └─────────────────────────────────────┘                         │
+│                      │                                                       │
+│          ┌───────────┴───────────┐                                           │
+│          │ confidence < 0.7?     │                                           │
+│          ▼                       ▼                                           │
+│   ┌──────────────┐      ┌──────────────────┐                                │
+│   │ Retry Search │      │  Finalize Claim  │                                │
+│   │ (max 3 iter) │      └──────────────────┘                                │
+│   └──────────────┘               │                                          │
+│                                  ▼                                          │
+│                        ┌──────────────────┐                                 │
+│                        │  Final Report    │                                  │
+│                        │  Trust Score     │                                  │
+│                        │  Verdict Summary │                                  │
+│                        └──────────────────┘                                 │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 Quick Start
+### LangGraph State Flow
+
+```
+START
+  │
+  ▼
+decompose_claims ──── (no claims extracted) ───▶ generate_report ───▶ END
+  │
+  ▼
+prepare_claim
+  │
+  ▼
+enrich_context          ← adds entity aliases, temporal/venue cues
+  │
+  ▼
+frame_claim             ← extract {person, action, location, time, context}
+  │
+  ▼
+generate_queries        ← 2–5 targeted search queries
+  │
+  ▼
+search_evidence         ← parallel Tavily/SerpAPI queries
+  │
+  ▼
+frame_evidence          ← align evidence event frames to claim frame
+  │
+  ▼
+assess_credibility      ← score each source (expertise, recency, bias)
+  │
+  ▼
+verify_claim            ← DeBERTa-v3 NLI + post-verification gatings
+  │
+  ├── (confidence < 0.7, iterations < 3) ───▶ generate_queries  [retry loop]
+  │
+  ▼
+finalize_claim
+  │
+  ├── (more claims remaining) ───▶ prepare_claim
+  │
+  ▼
+aggregate_results
+  │
+  ▼
+generate_report
+  │
+  ▼
+END
+```
+
+---
+
+## Agent Pipeline
+
+ClaimLens uses seven specialized agents, each with a clearly defined responsibility. Agents are modular and can accept injected dependencies, making them individually testable and swappable.
+
+### 1. Decomposition Agent
+
+**File**: `claimlens/agents/decomposition.py`
+
+Breaks raw input text into atomic, independently verifiable claims using GPT-4o-mini with structured output. Each claim is a single factual statement that can be checked in isolation.
+
+- Removes compound claims (e.g., "X happened AND Y is true")
+- Filters subjective language ("I believe", "arguably")
+- Validates claim length (10–500 characters)
+- Preserves the original `source_sentence` for traceability
+- Falls back gracefully if the LLM returns malformed output
+
+```
+Input:  "The Eiffel Tower is 330 meters tall and was built in 1889."
+
+Output:
+  Claim 1: "The Eiffel Tower is 330 meters tall"
+  Claim 2: "The Eiffel Tower was built in 1889"
+```
+
+---
+
+### 2. Context Enrichment Agent
+
+**File**: `claimlens/agents/context.py`
+
+Enriches each claim with structured metadata to improve downstream search and verification accuracy.
+
+Outputs a `ClaimContext` object containing:
+
+| Field | Description |
+|-------|-------------|
+| `normalized_claim` | Standardized claim text |
+| `enriched_claim_text` | Self-contained version with contextual details |
+| `context_summary` | Brief background on the claim topic |
+| `temporal_context` | Dates or time periods referenced |
+| `venue_context` | Institutions or locations referenced |
+| `entity_aliases` | Alternative names (e.g., "DPM" → "Deputy Prime Minister") |
+| `search_hints` | Related phrases and synonyms for search |
+| `context_notes` | Annotated entity list with confidence scores |
+| `event_frame` | Structured event representation (see Event Frame Agent) |
+
+---
+
+### 3. Event Frame Agent
+
+**File**: `claimlens/agents/event_frame.py`
+
+Extracts a structured event frame from both claims and evidence to enable precise matching. This prevents false positives where evidence discusses a related but distinct event.
+
+```python
+EventFrame:
+  person:   "Gan Kim Yong"
+  action:   "announced"
+  location: "Parliament of Singapore"
+  time:     "March 2025"
+  context:  "Committee of Supply debate"
+```
+
+The agent compares claim and evidence frames across four dimensions (person, action, location, time) and returns a match verdict: `match` | `partial` | `contradict` | `insufficient`.
+
+---
+
+### 4. Search Architect Agent
+
+**File**: `claimlens/agents/search_architect.py`
+
+Generates 2–5 targeted search queries per claim, using the enriched context and event frame to improve retrieval precision.
+
+- Produces diverse query formulations to increase recall
+- Context-aware mode uses enriched claim text and entity aliases
+- Retry mode generates different queries if initial evidence is insufficient
+- Falls back to simple keyword queries if LLM output is malformed
+
+```
+For claim: "The Eiffel Tower is 330 meters tall"
+
+Queries:
+  1. "Eiffel Tower height 330 meters"
+  2. "Eiffel Tower dimensions specifications"
+  3. "Gustave Eiffel tower 330m official height"
+```
+
+---
+
+### 5. Scraper Agent
+
+**File**: `claimlens/agents/scraper.py`
+
+Executes generated search queries in parallel using Tavily or SerpAPI, retrieves evidence snippets, and filters for relevance.
+
+- Executes up to 5 queries concurrently via `ThreadPoolExecutor`
+- Deduplicates evidence by URL across queries
+- Uses GPT-4o-mini to score each evidence piece for relevance (0.0–1.0)
+- Retains the top 5 most relevant evidence pieces (configurable)
+- Preserves source URL and domain metadata for credibility assessment
+
+---
+
+### 6. Credibility Assessment Agent
+
+**File**: `claimlens/agents/credibility.py`
+
+Evaluates the trustworthiness of each evidence source across three dimensions:
+
+| Dimension | Weight | Description |
+|-----------|--------|-------------|
+| Author Expertise | 40% | Domain authority of the source (expert publication → anonymous blog) |
+| Recency | 20% | Publication freshness (< 6 months → > 5 years old) |
+| Bias Score | 40% | Objectivity assessment (balanced journalism → propaganda) |
+
+Returns a `credibility_score` (0.0–1.0) and `source_quality` label (`high`, `medium`, `low`) for each evidence piece, which is incorporated into the final NLI weighted voting.
+
+---
+
+### 7. Verifier Agent
+
+**File**: `claimlens/agents/verifier.py`
+
+The core verification component. Combines DeBERTa-v3 NLI scoring with multi-layer post-verification gatings and selective LLM cross-checking.
+
+#### Verdict Types
+
+| Verdict | Meaning |
+|---------|---------|
+| `SUPPORTED` | Evidence confirms the claim |
+| `REFUTED` | Evidence contradicts the claim |
+| `NOT_ENOUGH_INFO` | Evidence is inconclusive or insufficient |
+
+#### Iterative Search Refinement
+
+- If confidence < 0.7, the verifier requests new search queries (up to 3 iterations)
+- `get_evidence_gap()` describes what evidence is missing for the retry
+- Early stopping if verdict is clear (confidence > 0.5) and not `NOT_ENOUGH_INFO`
+
+#### Post-Verification Gatings
+
+Three independent checks applied after the NLI decision to filter false positives:
+
+1. **Event Frame Gating** — Claim and evidence event frames must describe the same event across person, action, location, and time. Mismatches downgrade or block a `SUPPORTED` verdict.
+
+2. **Direct Match Gating** — The evidence snippet must contain key claim keywords. Prevents the NLI model from inferring support based on topically related but factually irrelevant text.
+
+3. **Cross-Source Agreement** — At least two distinct source domains must agree on the verdict. Prevents single-source reliance from generating a high-confidence result.
+
+---
+
+## NLI Verification Model
+
+**Model**: [`Zulfhagez/claimlens-deberta-v3-nli`](https://huggingface.co/Zulfhagez/claimlens-deberta-v3-nli) (HuggingFace Hub)
+
+A fine-tuned DeBERTa-v3 model trained specifically for fact-checking NLI, offering superior performance on factual claims compared to general-purpose zero-shot models like `facebook/bart-large-mnli`.
+
+| Label ID | Verdict |
+|----------|---------|
+| 0 | SUPPORTED |
+| 1 | REFUTED |
+| 2 | NOT_ENOUGH_INFO |
+
+### Weighted NLI Voting
+
+Rather than a single inference pass, ClaimLens performs NLI over all evidence pieces and aggregates using a weighted vote:
+
+```
+weighted_score = NLI_confidence × evidence_relevance_score × credibility_score
+final_verdict  = argmax(sum of weighted_scores per label)
+```
+
+### LLM Cross-Check Triggers
+
+In cases where the NLI model is uncertain, GPT-4o-mini is called as a second opinion:
+
+| Trigger | Condition | Action |
+|---------|-----------|--------|
+| A | REFUTED verdict + high relevance (≥ 0.65) | LLM second opinion |
+| B | NOT_ENOUGH_INFO + high relevance (≥ 0.60) | LLM second opinion |
+| C | Low NLI confidence (< 0.55) | LLM second opinion |
+
+The LLM override is applied only if its confidence is ≥ 0.70. Critically, cross-checking always uses the **original claim text** (not the enriched version) to prevent context contamination.
+
+### Alternative Verifier Backends
+
+The verifier is pluggable via the `VERIFIER_TYPE` config variable:
+
+| Backend | Model | Notes |
+|---------|-------|-------|
+| `claimlens` (default) | DeBERTa-v3 fine-tuned | Best performance; requires GPU recommended |
+| `huggingface` | `facebook/bart-large-mnli` | Zero-shot; no fine-tuning |
+| `openai` | GPT-4o-mini | No local model; pure LLM-based |
+
+---
+
+## API Reference
+
+The backend exposes a FastAPI application with REST and streaming endpoints.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/verify` | Synchronous verification — returns full report |
+| `POST` | `/verify/stream` | SSE streaming — real-time per-claim updates |
+| `POST` | `/verify/async` | Async job submission — returns `job_id` |
+| `GET` | `/verify/{job_id}` | Poll async job status and results |
+| `DELETE` | `/verify/{job_id}` | Cancel or delete an async job |
+| `POST` | `/decompose` | Extract claims only (no verification) |
+| `GET` | `/health` | Backend health check |
+| `GET` | `/config` | Active configuration (non-sensitive fields) |
+| `GET` | `/jobs` | List all tracked jobs |
+
+### Synchronous Verification
+
+```bash
+POST /verify
+Content-Type: application/json
+
+{
+  "text": "The Great Wall of China is visible from space with the naked eye."
+}
+```
+
+Returns a `FinalReport` with verdict, confidence, and evidence for each claim.
+
+### SSE Streaming
+
+```bash
+POST /verify/stream
+Content-Type: application/json
+
+{ "text": "..." }
+```
+
+Returns Server-Sent Events as processing progresses:
+
+```
+event: start
+data: {"event_type":"start","data":{"message":"Verification started"}}
+
+event: claims_extracted
+data: {"event_type":"claims_extracted","data":{"claims":[...],"count":2}}
+
+event: claim_verified
+data: {"event_type":"claim_verified","data":{"claim_id":"...","verdict":"SUPPORTED","confidence":0.94}}
+
+event: complete
+data: {"event_type":"complete","data":{"trust_score":0.92,"summary":"...","report":{...}}}
+```
+
+### Async Job
+
+```bash
+# Submit
+POST /verify/async
+{ "text": "..." }
+→ { "job_id": "uuid", "status": "pending" }
+
+# Poll
+GET /verify/{job_id}
+→ { "status": "completed", "report": {...} }
+```
+
+### Security
+
+- **API Key Authentication**: Optional `X-API-Key` header, configurable per environment
+- **Rate Limiting**: Per-client-IP throttling (Redis-backed or in-memory)
+- **CORS**: Configurable allowed origins
+- **Input Validation**: Max 10,000 characters; sanitized error messages in production
+
+---
+
+## Frontend
+
+The frontend is a Next.js 16 application with React 19 and Tailwind CSS 4, providing a real-time verification interface.
+
+### Pages
+
+**Landing Page** (`/`)
+- Hero section with project overview and key metrics
+- Visual pipeline diagram showing the verification flow
+- Feature highlights and how-it-works walkthrough
+- Call-to-action to begin verification
+
+**Verification Page** (`/verify`)
+- Text input with live character counter (max 10,000)
+- Real-time pipeline visualizer showing active graph node
+- Per-claim progress tracking with status indicators
+- Detailed results view with verdicts, confidence scores, and evidence sources
+
+### Real-Time Streaming
+
+The frontend uses the native `EventSource`/`fetch` SSE API to receive incremental updates:
+
+- Pipeline stage transitions update the visual graph in real time
+- Claims appear as they are extracted
+- Each claim verdict updates independently as verification completes
+- AbortController supports mid-stream cancellation
+
+### State Management
+
+A React Context (`VerificationContext`) manages global verification state:
+
+```typescript
+type Phase = "input" | "loading" | "results"
+
+interface VerificationState {
+  text: string
+  phase: Phase
+  claims: ExtractedClaim[]
+  verified: VerifiedClaim[]
+  report: FinalReport | null
+  error: string | null
+  progressMsg: string
+  currentNode: PipelineNode | null
+  completedNodes: PipelineNode[]
+}
+```
+
+### API Proxy
+
+`next.config.ts` rewrites `/api/*` to the backend URL via `API_BACKEND_URL`, avoiding CORS issues in development and enabling seamless deployment behind a single domain in production.
+
+---
+
+## Project Structure
+
+```
+AAI3008_ClaimLens/
+├── claimlens/                          # Python backend
+│   ├── config.py                       # Pydantic-settings configuration
+│   ├── storage.py                      # Redis + PostgreSQL integration
+│   ├── agents/
+│   │   ├── decomposition.py            # Claim extraction (GPT-4o-mini)
+│   │   ├── context.py                  # Context enrichment & entity aliasing
+│   │   ├── event_frame.py              # Structured event frame extraction
+│   │   ├── search_architect.py         # Search query generation
+│   │   ├── scraper.py                  # Parallel evidence retrieval (Tavily)
+│   │   ├── credibility.py              # Source credibility scoring
+│   │   └── verifier.py                 # NLI verification + post-gatings
+│   ├── models/
+│   │   ├── schemas.py                  # Pydantic data models
+│   │   └── nli_placeholder.py          # Verifier implementations (ClaimLens, HF, OpenAI)
+│   ├── graph/
+│   │   └── orchestrator.py             # LangGraph state machine
+│   ├── services/
+│   │   ├── llm_service.py              # OpenAI API wrapper
+│   │   └── search_service.py           # Search API abstraction
+│   └── api/
+│       └── main.py                     # FastAPI app (REST + SSE)
+│
+├── claimlens-ui/                       # Next.js 16 frontend
+│   └── src/
+│       ├── app/
+│       │   ├── page.tsx                # Landing page
+│       │   ├── verify/page.tsx         # Verification interface
+│       │   └── layout.tsx              # Root layout (Navbar + Footer)
+│       ├── components/
+│       │   ├── landing/                # Hero, Architecture, Features, HowItWorks, CTA
+│       │   ├── verify/                 # VerifyPage, PipelineVisualizer, ProgressTracker, ResultsView
+│       │   └── layout/                 # Navbar, Footer
+│       ├── context/
+│       │   └── VerificationContext.tsx # Global verification state
+│       ├── hooks/
+│       │   └── useVerification.ts      # Context hook
+│       ├── lib/
+│       │   └── api.ts                  # Fetch + SSE client
+│       ├── types/
+│       │   └── api.ts                  # TypeScript types (Claim, Evidence, FinalReport, etc.)
+│       └── constants/
+│           ├── verdicts.ts             # Verdict colors and labels
+│           └── validation.ts           # Input limits
+│
+├── examples/
+│   ├── run_verification.py             # Standalone CLI demo
+│   └── custom_verifier.py              # Custom verifier implementation guide
+│
+├── tests/
+│   └── test_pipeline.py                # Unit tests
+│
+├── requirements.txt
+├── .env.example
+└── README.md
+```
+
+---
+
+## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 18+ (for the frontend)
+- Node.js 18+
 - OpenAI API key
 - Tavily API key
 
@@ -43,15 +561,15 @@ An agentic fact-checking pipeline using LangGraph that decomposes user-provided 
 
 ```bash
 # Clone the repository
+git clone https://github.com/ZulfaqarHafez/AAI3008_ClaimLens.git
 cd AAI3008_ClaimLens
 
-# Create virtual environment
+# Create and activate a virtual environment
 python -m venv .venv
 
-# Activate virtual environment
-# Windows:
+# Windows
 .venv\Scripts\activate
-# Linux/Mac:
+# Linux / macOS
 source .venv/bin/activate
 
 # Install Python dependencies
@@ -66,551 +584,195 @@ cd ..
 ### Configuration
 
 ```bash
-# Copy example environment file
 cp .env.example .env
+```
 
-# Edit .env and add your API keys
-# OPENAI_API_KEY=your_key_here
-# TAVILY_API_KEY=your_key_here
-# VERIFIER_TYPE=claimlens
+Edit `.env` with your credentials:
+
+```env
+OPENAI_API_KEY=your_openai_key
+TAVILY_API_KEY=your_tavily_key
+VERIFIER_TYPE=claimlens        # claimlens | huggingface | openai
 ```
 
 ### Running
 
 ```bash
-# Terminal 1 — Start the FastAPI backend
+# Terminal 1 — FastAPI backend
 uvicorn claimlens.api.main:app --reload --host 0.0.0.0 --port 8000
 
-# Terminal 2 — Start the Next.js frontend
+# Terminal 2 — Next.js frontend
 cd claimlens-ui
 npm run dev
 ```
 
-- Backend API docs: http://localhost:8000/docs
-- Frontend UI: http://localhost:3000
+- **Frontend**: http://localhost:3000
+- **API docs (Swagger)**: http://localhost:8000/docs
+- **API docs (ReDoc)**: http://localhost:8000/redoc
 
-## ☁️ AWS Deployment and Persistent Storage
-
-ClaimLens is deployed on AWS with the following infrastructure:
-
-- **Amazon EC2** for hosting both the frontend and FastAPI backend
-- **Amazon RDS PostgreSQL** for persistent storage of verification reports
-- **Amazon ElastiCache Redis** for asynchronous job and state storage
-- **Elastic IP** for a stable public address
-
-### Application Access
-
-- **Frontend:** http://98.86.56.208:3000/
-- **Backend API:** http://98.86.56.208:8000/docs
-
-### Persistent Storage
-
-Persistent storage was implemented and validated end-to-end.
-
-- Verification results are stored durably in **PostgreSQL**
-- Async verification job state is managed through the backend storage layer with **Redis**
-- Successful verification runs can be confirmed in the `verification_reports` table in RDS
-
-### Running the Frontend on EC2
+### Running Tests
 
 ```bash
-cd claimlens-ui
-npm run build
-npm run start -- --hostname 0.0.0.0 --port 3000
+pytest tests/ -v
+
+# With coverage report
+pytest tests/ --cov=claimlens --cov-report=html
 ```
 
-### Running the Backend on EC2
+---
 
-```bash
-uvicorn claimlens.api.main:app --host 0.0.0.0 --port 8000 --env-file .env
-```
+## Configuration
 
-## 🎯 How the App Works
-
-### User Flow
-
-ClaimLens is an **agentic fact-checking system** that uses multiple AI agents working together to verify claims automatically. Here's what happens when a user submits text:
-
-#### Step 1: Landing Page
-Users arrive at the landing page which explains the concept:
-- Displays hero section with key metrics (trust score breakdown)
-- Shows the architecture pipeline with visual flow of how claims are decomposed → searched → verified
-- Lists key features: atomic claim extraction, multi-evidence gathering, credibility scoring
-- Includes call-to-action to verify claims
-
-#### Step 2: User Submits Text
-User navigates to the Verify page and enters text they want fact-checked:
-
-```
-Input Example:
-"The Eiffel Tower is 330 meters tall and was built in 1889. It attracts over 7 million visitors annually."
-```
-
-The app validates that:
-- Text is not empty
-- Text is under 10,000 characters
-- No special filtering applied (all languages welcome)
-
-#### Step 3: Decomposition Agent
-The **Decomposition Agent** breaks the input into atomic, verifiable claims:
-
-```python
-# Agent: decomposition.py
-# Model: GPT-4o mini
-# Task: Extract atomic claims from unstructured text
-
-Input: "The Eiffel Tower is 330 meters tall and was built in 1889."
-
-Output Claims:
-├─ Claim 1: "The Eiffel Tower is 330 meters tall"
-├─ Claim 2: "The Eiffel Tower was built in 1889"
-└─ Metadata: source_sentence, claim_id, status (pending)
-```
-
-The agents ensures:
-- Each claim is independently verifiable
-- No compound claims (e.g., "X is true AND Y happened")
-- Claims retain original context via source_sentence reference
-
-#### Step 4: Search Architect Agent
-For each claim, the **Search Architect Agent** generates targeted search queries:
-
-```python
-# Agent: search_architect.py
-# Model: GPT-4o mini
-# Task: Generate search queries that will find relevant evidence
-
-For Claim: "The Eiffel Tower is 330 meters tall"
-
-Queries Generated:
-├─ Query 1: "Eiffel Tower height meters"
-├─ Query 2: "Eiffel Tower dimensions specifications"
-└─ Query 3: "Gustave Eiffel tower 330m"
-
-Reasoning: Multiple formulations increase chance of finding reliable sources
-```
-
-#### Step 5: Scraper Agent
-The **Scraper Agent** executes generated queries and retrieves web evidence:
-
-```python
-# Agent: scraper.py
-# Service: Tavily Web Search API
-# Task: Find and extract relevant evidence from web sources
-
-For Query: "Eiffel Tower height meters"
-
-Evidence Retrieved:
-├─ Source 1: Wikipedia - "The Eiffel Tower... 330 metres (1,083 ft) tall"
-├─ Source 2: ArchitectureToday - "Height: 330m with antenna"
-└─ Source 3: TouristGuide - "Standing at 330 meters, the Eiffel Tower..."
-
-Processing:
-- Removes duplicates
-- Filters irrelevant results
-- Keeps top 5 sources per query
-- Preserves source URL and relevance metadata
-```
-
-#### Step 6: Verification Agent (NLI Model)
-The **Verifier Agent** uses a fine-tuned NLI (Natural Language Inference) model to compare claims against evidence:
-
-```python
-# Model: ClaimLens DeBERTa-v3-NLI (fine-tuned)
-# Task: Determine if evidence supports, refutes, or is neutral toward claim
-
-Processing for Claim: "The Eiffel Tower is 330 meters tall"
-
-Evidence Analysis:
-├─ Evidence 1: "330 metres tall"
-│   └─ NLI Output: SUPPORTED (confidence: 0.94)
-│
-├─ Evidence 2: "330m with antenna"
-│   └─ NLI Output: SUPPORTED (confidence: 0.89)
-│
-└─ Evidence 3: "Standing at 330 meters"
-    └─ NLI Output: SUPPORTED (confidence: 0.92)
-
-Final Verdict Calculation:
-├─ Verdict: SUPPORTED
-├─ Confidence: 0.92 (weighted average)
-├─ Reasoning: "Multiple reliable sources confirm the Eiffel Tower height"
-└─ Iterations Used: 1 (high confidence found on first search)
-```
-
-#### Step 7: Real-time Progress Tracking
-As the pipeline runs, the frontend shows real-time progress:
-
-```
-Progress Display:
-├─ ⏳ Decomposing claims...     [ACTIVE]
-├─ ⏳ Generating search queries... [QUEUED]
-├─ ⏳ Gathering evidence...    [QUEUED]
-├─ ⏳ Verifying claims...      [QUEUED]
-└─ ⏳ Aggregating results...   [QUEUED]
-
-Per-Claim Tracking:
-├─ [✓] Claim 1: "The Eiffel Tower is 330 meters tall"
-├─ [⏳] Claim 2: "The Eiffel Tower was built in 1889"
-└─ [○] Claim 3: Not yet processed
-```
-
-#### Step 8: Final Report
-After all claims are verified, the user sees comprehensive results:
-
-```json
-{
-  "overall_trust_score": 0.88,
-  "summary": "88% of claims are supported by evidence. High confidence in provided information.",
-  "claims_breakdown": {
-    "supported": 2,
-    "refuted": 0,
-    "insufficient_info": 0
-  },
-  "verification_results": [
-    {
-      "claim": "The Eiffel Tower is 330 meters tall",
-      "verdict": "SUPPORTED",
-      "confidence": 0.92,
-      "evidence_count": 3,
-      "reasoning": "Multiple reliable sources confirm..."
-    },
-    {
-      "claim": "The Eiffel Tower was built in 1889",
-      "verdict": "SUPPORTED",
-      "confidence": 0.95,
-      "evidence_count": 5,
-      "reasoning": "All major historical sources confirm..."
-    }
-  ]
-}
-```
-
-### What Makes it Agentic
-
-ClaimLens isn't a simple API call—it's a **multi-agent system** orchestrated by LangGraph:
-
-1. **Independent Agents**: Each agent (decomposer, searcher, scraper, verifier) can make decisions autonomously
-2. **Stateful Orchestration**: LangGraph manages state transitions between agents, with conditional logic:
-   - If confidence is low → Generate more search queries and try again
-   - If max iterations reached → Return best confidence found
-   - If no claims extracted → Return empty report
-3. **Evidence-Based Reasoning**: The verifier doesn't just match keywords—it understands semantic relationships through NLI
-4. **Iterative Refinement**: The system can loop back to search_architect if initial verification confidence is below threshold (default 0.7)
-
-### Verdict Types
-
-The system returns one of three verdicts per claim:
-
-| Verdict | Meaning | Example |
-|---------|---------|---------|
-| **SUPPORTED** | Evidence confirms the claim | "Snow is white" + evidence → SUPPORTED |
-| **REFUTED** | Evidence contradicts the claim | "Snow is black" + evidence → REFUTED |
-| **NOT_ENOUGH_INFO** | Evidence is inconclusive | Ambiguous claim + vague evidence → NOT_ENOUGH_INFO |
-
-### Confidence Scoring
-
-Each verdict includes a confidence score (0-1):
-- **0.9+**: Very high confidence (multiple strong sources align)
-- **0.7-0.9**: High confidence (primary sources support)
-- **0.5-0.7**: Moderate confidence (some sources align, some ambiguous)
-- **<0.5**: Low confidence (contradictory evidence or unclear)
-
-## 📁 Project Structure
-
-```
-AAI3008_ClaimLens/
-├── claimlens/                        # Python backend
-│   ├── __init__.py
-│   ├── config.py                     # Settings (env vars, defaults)
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── decomposition.py          # Breaks text into atomic claims (GPT-4o mini)
-│   │   ├── search_architect.py       # Generates search queries per claim
-│   │   ├── scraper.py                # Retrieves and filters web evidence (Tavily)
-│   │   └── verifier.py               # Verifies claims against evidence
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── schemas.py                # Pydantic data models (Claim, Evidence, etc.)
-│   │   └── nli_placeholder.py        # NLI verifier implementations (ClaimLens DeBERTa, HF, OpenAI)
-│   ├── graph/
-│   │   ├── __init__.py
-│   │   └── orchestrator.py           # LangGraph state machine orchestrator
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── llm_service.py            # OpenAI API wrapper
-│   │   └── search_service.py         # Web search API wrapper (Tavily/SerpAPI)
-│   └── api/
-│       ├── __init__.py
-│       └── main.py                   # FastAPI endpoints (sync, async, SSE streaming)
-│
-├── claimlens-ui/                     # Next.js frontend (TypeScript + Tailwind)
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── layout.tsx            # Root layout with Navbar + Footer
-│   │   │   ├── page.tsx              # Landing page
-│   │   │   ├── error.tsx             # Global error boundary
-│   │   │   ├── not-found.tsx         # 404 page
-│   │   │   ├── loading.tsx           # Root loading skeleton
-│   │   │   ├── globals.css           # Tailwind v4 theme
-│   │   │   └── verify/
-│   │   │       ├── page.tsx          # Verification page
-│   │   │       └── loading.tsx       # Verify route loading
-│   │   ├── components/
-│   │   │   ├── landing/              # Landing page sections
-│   │   │   │   ├── Hero.tsx
-│   │   │   │   ├── HowItWorks.tsx
-│   │   │   │   ├── Features.tsx
-│   │   │   │   └── CTA.tsx
-│   │   │   ├── layout/               # Layout components
-│   │   │   │   ├── Navbar.tsx
-│   │   │   │   └── Footer.tsx
-│   │   │   └── verify/               # Verification components
-│   │   │       ├── VerifyPage.tsx
-│   │   │       ├── ProgressTracker.tsx
-│   │   │       └── ResultsView.tsx
-│   │   ├── constants/                # Shared constants
-│   │   │   ├── verdicts.ts           # Verdict colors, icons, labels
-│   │   │   └── validation.ts         # Input validation limits
-│   │   ├── hooks/                    # Custom React hooks
-│   │   │   └── useVerification.ts    # Verification state + streaming logic
-│   │   ├── lib/
-│   │   │   └── api.ts               # API client with SSE + AbortController
-│   │   └── types/
-│   │       ├── api.ts               # TypeScript types matching backend schemas
-│   │       └── index.ts             # Barrel export
-│   ├── .env.local                    # Frontend env vars (API_BACKEND_URL)
-│   ├── next.config.ts                # API proxy (rewrites /api/* → backend)
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── examples/
-│   ├── run_verification.py           # Standalone demo script
-│   └── custom_verifier.py            # Custom verifier implementation example
-│
-├── tests/
-│   ├── __init__.py
-│   └── test_pipeline.py              # Unit tests for the pipeline
-│
-├── .env.example                      # Environment variable template
-├── .gitignore
-├── requirements.txt                  # Python dependencies
-└── README.md
-```
-
-## 🔌 API Endpoints
-
-### Synchronous Verification
-
-```bash
-POST /verify
-Content-Type: application/json
-
-{
-  "text": "The Eiffel Tower is 330 meters tall and was built in 1889."
-}
-```
-
-### Async Verification
-
-```bash
-# Start verification job
-POST /verify/async
-Content-Type: application/json
-
-{
-  "text": "Your text here..."
-}
-
-# Returns: { "job_id": "uuid", "status": "pending" }
-
-# Check status
-GET /verify/{job_id}
-```
-
-### Streaming Verification (SSE)
-
-```bash
-POST /verify/stream
-Content-Type: application/json
-
-{
-  "text": "Your text here..."
-}
-
-# Returns Server-Sent Events with progress updates
-```
-
-### Utility Endpoints
-
-```bash
-# Health check
-GET /health
-
-# Get configuration
-GET /config
-
-# Decompose text into claims (without verification)
-POST /decompose
-
-# List all jobs
-GET /jobs
-```
-
-## 🧪 Example Usage
-
-### Python Client
-
-```python
-import requests
-
-# Synchronous verification
-response = requests.post(
-    "http://localhost:8000/verify",
-    json={"text": "The Great Wall of China is visible from space."}
-)
-
-report = response.json()
-print(f"Trust Score: {report['overall_trust_score']}")
-print(f"Summary: {report['summary']}")
-
-for result in report['verification_results']:
-    print(f"\nClaim: {result['claim']['text']}")
-    print(f"Verdict: {result['verdict']}")
-    print(f"Confidence: {result['confidence']}")
-```
-
-## 🔧 Configuration Options
+All settings are managed via environment variables (`.env`) and Pydantic-settings.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_MODEL` | gpt-4o-mini | OpenAI model to use |
-| `LLM_TEMPERATURE` | 0.1 | Temperature for LLM responses |
-| `MAX_VERIFICATION_ITERATIONS` | 3 | Max search iterations per claim |
-| `CONFIDENCE_THRESHOLD` | 0.7 | Threshold to stop searching |
-| `MAX_EVIDENCE_PER_CLAIM` | 5 | Max evidence pieces per claim |
-| `SEARCH_RESULTS_PER_QUERY` | 5 | Results per search query |
-| `VERIFIER_TYPE` | claimlens | Verifier backend (`claimlens` / `huggingface` / `openai`) |
-| `SEARCH_PROVIDER` | tavily | Search API (`tavily` / `serpapi`) |
+| `OPENAI_API_KEY` | — | OpenAI API key (required) |
+| `TAVILY_API_KEY` | — | Tavily search key (required if using Tavily) |
+| `SERPAPI_KEY` | — | SerpAPI key (alternative to Tavily) |
+| `LLM_MODEL` | `gpt-4o` | OpenAI model for agents |
+| `LLM_TEMPERATURE` | `0.1` | Temperature for LLM responses |
+| `VERIFIER_TYPE` | `claimlens` | NLI backend: `claimlens`, `huggingface`, `openai` |
+| `HF_NLI_MODEL` | `facebook/bart-large-mnli` | HuggingFace model (if `VERIFIER_TYPE=huggingface`) |
+| `SEARCH_PROVIDER` | `tavily` | Search backend: `tavily`, `serpapi` |
+| `MAX_VERIFICATION_ITERATIONS` | `3` | Max search retry iterations per claim |
+| `CONFIDENCE_THRESHOLD` | `0.7` | Minimum confidence before accepting verdict |
+| `MAX_EVIDENCE_PER_CLAIM` | `5` | Maximum evidence pieces per claim |
+| `SEARCH_RESULTS_PER_QUERY` | `5` | Results returned per search query |
+| `API_HOST` | `0.0.0.0` | Backend host |
+| `API_PORT` | `8000` | Backend port |
+| `CORS_ORIGINS` | `*` | Allowed CORS origins |
+| `API_KEY` | — | Optional API key for authentication |
+| `RATE_LIMIT_REQUESTS` | — | Requests per minute per IP |
 
-## 🤖 ClaimLens DeBERTa NLI Model
+---
 
-The default verifier uses a fine-tuned DeBERTa-v3 model (`Zulfhagez/claimlens-deberta-v3-nli`) for 3-label natural language inference:
-
-| Label ID | Verdict |
-|----------|---------|
-| 0 | SUPPORTED |
-| 1 | REFUTED |
-| 2 | NOT_ENOUGH_INFO |
-
-The model is lazy-loaded on first use and runs weighted voting across all evidence pieces for each claim, combining NLI confidence with evidence relevance scores.
-
-## 📊 Data Models
+## Data Models
 
 ### Claim
+
 ```json
 {
   "id": "uuid",
-  "text": "The atomic claim text",
-  "source_sentence": "Original sentence",
-  "status": "pending | searching | verifying | completed | failed"
+  "text": "The Eiffel Tower is 330 meters tall",
+  "source_sentence": "The Eiffel Tower is 330 meters tall and was built in 1889.",
+  "status": "completed",
+  "context": { /* ClaimContext */ }
+}
+```
+
+### Evidence
+
+```json
+{
+  "url": "https://en.wikipedia.org/wiki/Eiffel_Tower",
+  "title": "Eiffel Tower — Wikipedia",
+  "snippet": "The Eiffel Tower is 330 metres (1,083 ft) tall...",
+  "relevance_score": 0.96,
+  "credibility_score": 0.91,
+  "source_quality": "high",
+  "event_frame": { /* EventFrame */ }
 }
 ```
 
 ### VerificationResult
+
 ```json
 {
-  "claim": "Claim",
-  "evidence_list": ["Evidence"],
-  "verdict": "SUPPORTED | REFUTED | NOT_ENOUGH_INFO",
-  "confidence": 0.92,
-  "reasoning": "Explanation text",
+  "claim": { /* Claim */ },
+  "evidence_list": [ /* Evidence[] */ ],
+  "verdict": "SUPPORTED",
+  "confidence": 0.94,
+  "reasoning": "Multiple authoritative sources confirm the 330-metre height.",
   "iterations_used": 1
 }
 ```
 
 ### FinalReport
+
 ```json
 {
   "id": "uuid",
-  "original_text": "Input text",
-  "claims": ["Claim"],
-  "verification_results": ["VerificationResult"],
-  "overall_trust_score": 0.87,
-  "summary": "Human-readable summary",
-  "processing_time_seconds": 91.2
+  "original_text": "...",
+  "claims": [ /* Claim[] */ ],
+  "verification_results": [ /* VerificationResult[] */ ],
+  "overall_trust_score": 0.92,
+  "summary": "2 of 2 claims supported. High confidence in submitted information.",
+  "processing_time_seconds": 14.3
 }
 ```
 
-## 🧮 Trust Score Calculation
+---
+
+## Trust Score Calculation
 
 ```
-overall_trust_score = weighted_average of:
-  - claim_support_ratio (50%): % of claims supported (penalizes refuted)
-  - average_confidence (30%): Mean confidence across all verdicts
-  - evidence_quality_score (20%): Based on source reliability
+overall_trust_score = weighted average of:
+  claim_support_ratio   (50%)  — percentage of claims with SUPPORTED verdict
+                                 (REFUTED claims are penalised)
+  average_confidence    (30%)  — mean confidence across all verdicts
+  evidence_quality      (20%)  — derived from average credibility scores
 ```
 
-## 🛣️ LangGraph State Flow
+### Confidence Levels
 
-```
-START
-  │
-  ▼
-decompose_claims
-  │
-  ├─── (no claims) ───▶ generate_report ───▶ END
-  │
-  ▼
-prepare_claim
-  │
-  ▼
-generate_queries
-  │
-  ▼
-search_evidence
-  │
-  ▼
-verify_claim
-  │
-  ├─── (low confidence) ───▶ generate_queries (loop)
-  │
-  ▼
-finalize_claim
-  │
-  ├─── (more claims) ───▶ prepare_claim
-  │
-  ▼
-aggregate_results
-  │
-  ▼
-generate_report
-  │
-  ▼
-END
-```
+| Range | Level | Interpretation |
+|-------|-------|----------------|
+| 0.90 – 1.00 | Very High | Multiple strong, independent sources align |
+| 0.70 – 0.90 | High | Primary authoritative sources support the verdict |
+| 0.50 – 0.70 | Moderate | Some sources align; some ambiguity present |
+| < 0.50 | Low | Contradictory evidence or insufficient information |
 
-## 🧪 Testing
+---
 
-```bash
-# Run tests
-pytest tests/ -v
+## Tech Stack
 
-# Run with coverage
-pytest tests/ --cov=claimlens --cov-report=html
-```
+### Backend
 
-## 📝 License
+| Category | Technology |
+|----------|-----------|
+| API framework | FastAPI 0.109+ |
+| Agent orchestration | LangGraph 0.2+ |
+| LLM integration | LangChain + OpenAI SDK |
+| NLI model | DeBERTa-v3 (fine-tuned via HuggingFace Transformers) |
+| ML inference | PyTorch 2.1+ |
+| Web search | Tavily API / SerpAPI |
+| Async HTTP | HTTPX, aiohttp |
+| Job storage | Redis (TTL-based caching) |
+| Report persistence | PostgreSQL (JSONB) |
+| Configuration | Pydantic-settings |
 
-MIT License - See LICENSE file for details.
+### Frontend
 
-## 🔮 Future Improvements
+| Category | Technology |
+|----------|-----------|
+| Framework | Next.js 16 (App Router) |
+| UI library | React 19 (with React Compiler) |
+| Styling | Tailwind CSS 4 |
+| Language | TypeScript 5 |
+| Icons | Lucide React |
+| Streaming | Native SSE via Fetch API |
 
-- [x] Integrate custom DeBERTa-v3 NLI model
-- [x] Next.js frontend with streaming verification
-- [ ] Add Redis for job persistence
-- [ ] Add claim deduplication
-- [ ] Support for multiple languages
-- [ ] Batch processing endpoint
-- [ ] Source credibility scoring
-- [ ] Claim provenance tracking
+---
+
+## Roadmap
+
+- [x] Fine-tuned DeBERTa-v3 NLI model (`claimlens-deberta-v3-nli`)
+- [x] Next.js frontend with real-time SSE streaming
+- [x] Context enrichment and event frame extraction
+- [x] Multi-layer post-verification gatings
+- [x] Source credibility scoring
+- [x] Iterative search refinement with retry logic
+- [x] Async job management with Redis
+- [ ] Redis-backed job persistence in production
+- [ ] Claim deduplication across pipeline runs
+- [ ] Multi-language support
+- [ ] Batch text processing endpoint
+- [ ] Claim provenance and source citation export
+- [ ] User accounts and verification history dashboard
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
