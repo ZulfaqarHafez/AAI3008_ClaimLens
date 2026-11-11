@@ -1,0 +1,44 @@
+{
+  "revision_type=real": {
+    "claimlens_pred": 0.6439,
+    "zero_shot_deberta_v3_base_pred": 0.5236,
+    "zero_shot_bart_large_mnli_pred": 0.504,
+    "n": 1887
+  },
+  "revision_type=synthetic": {
+    "claimlens_pred": 0.681,
+    "zero_shot_deberta_v3_base_pred": 0.7143,
+    "zero_shot_bart_large_mnli_pred": 0.7394,
+    "n": 1113
+  },
+  "claim_has_digit": {
+    "claimlens_pred": 0.661,
+    "zero_shot_deberta_v3_base_pred": 0.5231,
+    "zero_shot_bart_large_mnli_pred": 0.5026,
+    "n": 1363
+  },
+  "claim_has_no_digit": {
+    "claimlens_pred": 0.6549,
+    "zero_shot_deberta_v3_base_pred": 0.6536,
+    "zero_shot_bart_large_mnli_pred": 0.6652,
+    "n": 1637
+  },
+  "claimlens_pred_distribution": {
+    "NEI": 1173,
+    "SUPPORTED": 1225,
+    "REFUTED": 602
+  },
+  "gold_distribution": {
+    "REFUTED": 1040,
+    "NEI": 404,
+    "SUPPORTED": 1556
+  },
+  "claimlens_confusions": {
+    "REFUTED->NEI": 410,
+    "SUPPORTED->NEI": 420,
+    "REFUTED->SUPPORTED": 96,
+    "NEI->REFUTED": 28,
+    "SUPPORTED->REFUTED": 40,
+    "NEI->SUPPORTED": 33
+  }
+}

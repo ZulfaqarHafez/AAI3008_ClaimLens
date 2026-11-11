@@ -233,3 +233,16 @@ class TestCustomVerifier:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_claimlens_label_map_matches_published_config():
+    """id2label in Zulfhagez/claimlens-deberta-v3-nli config.json is
+    {0: SUPPORTED, 1: NEI, 2: REFUTED}; the verifier must decode the same way."""
+    from claimlens.models.nli_placeholder import ClaimLensVerifier
+    from claimlens.models.schemas import Verdict
+
+    assert ClaimLensVerifier.LABEL_MAP == {
+        0: Verdict.SUPPORTED,
+        1: Verdict.NOT_ENOUGH_INFO,
+        2: Verdict.REFUTED,
+    }
