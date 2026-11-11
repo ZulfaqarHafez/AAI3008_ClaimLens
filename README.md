@@ -319,8 +319,12 @@ A fine-tuned DeBERTa-v3 model trained specifically for fact-checking NLI, offeri
 | Label ID | Verdict |
 |----------|---------|
 | 0 | SUPPORTED |
-| 1 | REFUTED |
-| 2 | NOT_ENOUGH_INFO |
+| 1 | NOT_ENOUGH_INFO (`NEI` in config.json) |
+| 2 | REFUTED |
+
+This order matches `id2label` in the model's `config.json`. Earlier versions of the code and this table swapped 1 and 2; see [eval/README.md](eval/README.md).
+
+**Measured accuracy** (VitaminC test sample, n = 3,000, CPU, November 2026): 65.8% accuracy (95% CI 64.0 to 67.5) and 0.625 macro F1, against 59.1% and 0.561 for zero-shot `facebook/bart-large-mnli` on the same pairs. Details, failure analysis and limits: [eval/README.md](eval/README.md) and [MODEL_CARD.md](MODEL_CARD.md).
 
 ### Weighted NLI Voting
 

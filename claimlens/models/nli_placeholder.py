@@ -219,7 +219,7 @@ Analyze the evidence and provide your verdict."""
 class ClaimLensVerifier(BaseVerifier):
     """Verifier using the fine-tuned ClaimLens DeBERTa-v3 NLI model.
 
-    Labels: SUPPORTED (0), REFUTED (1), NEI (2).
+    Labels (from the model's config.json id2label): SUPPORTED (0), NEI (1), REFUTED (2).
     Model: Zulfhagez/claimlens-deberta-v3-nli
 
     LLM Cross-check triggers
@@ -251,10 +251,17 @@ class ClaimLensVerifier(BaseVerifier):
     atomic claim.
     """
 
+    # Must match id2label in the published config.json. The previous map
+    # (1 = REFUTED, 2 = NEI) swapped REFUTED and NEI; see eval/README.md.
     LABEL_MAP = {
         0: Verdict.SUPPORTED,
-        1: Verdict.REFUTED,
-        2: Verdict.NOT_ENOUGH_INFO,
+        1: Verdict.NOT_ENOUGH_INFO,
+        2: Verdict.REFUTED,
+    }
+    _CONFIG_NAME_TO_VERDICT = {
+        "SUPPORTED": Verdict.SUPPORTED,
+        "NEI": Verdict.NOT_ENOUGH_INFO,
+        "REFUTED": Verdict.REFUTED,
     }
 
     # Cross-check trigger thresholds
@@ -284,6 +291,13 @@ class ClaimLensVerifier(BaseVerifier):
             self._tokenizer = AutoTokenizer.from_pretrained(self.model_path)
             self._model     = AutoModelForSequenceClassification.from_pretrained(self.model_path)
             self._model.eval()
+            # Prefer the checkpoint's own label order so a retrained model with a
+            # different order cannot silently swap verdicts again.
+            id2label = getattr(self._model.config, "id2label", None) or {}
+            if all(str(v).upper() in self._CONFIG_NAME_TO_VERDICT for v in id2label.values()) and len(id2label) == 3:
+                self.LABEL_MAP = {
+                    int(k): self._CONFIG_NAME_TO_VERDICT[str(v).upper()] for k, v in id2label.items()
+                }
 
     def _run_nli(self, hypothesis: str, evidence_snippet: str) -> Tuple[Verdict, float]:
         """Run a single NLI inference pass."""
